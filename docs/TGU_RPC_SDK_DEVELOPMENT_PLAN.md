@@ -11,7 +11,7 @@
 ### 1.1. 배경
 
 - TGU는 MQTT 브로커에 연결되어 클라이언트와 RPC를 수행한다.
-- 클라이언트는 MQTT over WSS가 아닌 **wss-mqtt-api**를 통해 연결한다.
+- 클라이언트는 **wss-mqtt-api** 또는 **MQTT over WSS** 중 선택하여 연결할 수 있다.
 - VISSv3의 MQTT 전송 프로토콜 사례와 유사한 구조를 갖는다.
 - 현재 클라이언트는 토픽 경로, 구독/발행 순서 등을 직접 처리해야 하며 개발 부담이 크다.
 
@@ -21,6 +21,7 @@
 - 기존 `wss-mqtt-client`를 재활용·포함한 **통합 SDK** 구성
 - 기본 pub/sub 기능도 클라이언트가 계속 사용할 수 있도록 유지
 - 표준화된 토픽 패턴과 페이로드 스키마를 적용
+- **연결 방식 선택**: wss-mqtt-api 또는 MQTT over WSS를 옵션으로 지정하여 선택 가능, 인터페이스는 동일
 
 ### 1.3. 적용 대상
 
@@ -34,63 +35,138 @@
 
 ## 2. 아키텍처
 
-### 2.1. 레이어 구조
+### 2.1. 설계 원칙: Transport는 wss_mqtt_client에 집중
+
+**transport 선택과 구현은 wss_mqtt_client에서 담당**한다. TGU RPC SDK는 transport를 직접 구현하지 않고, 사용자 선택을 wss_mqtt_client에 전달한다.
+
+| 원칙 | 설명 |
+|------|------|
+| **구조적 일관성** | transport 로직이 한 곳(wss_mqtt_client)에 집중. TGU RPC SDK는 RPC·토픽 패턴에만 집중. |
+| **통합 혜택** | RPC와 기본 pub/sub 모두 wss_mqtt_client를 사용하므로 transport 선택이 동일하게 적용됨. |
+| **재사용성** | TGU 없이 pub/sub만 쓰는 경우에도 wss_mqtt_client로 transport 선택 가능. |
+| **의존성 단순화** | TGU RPC SDK는 wss-mqtt-client만 의존. paho-mqtt는 wss_mqtt_client 내부에 한정. |
+
+### 2.2. 연결 방식 옵션 (wss_mqtt_client 수준)
+
+wss_mqtt_client의 `WssMqttClient` 초기화 시 `transport` 옵션으로 선택한다.
+
+| transport | 설명 | 인증 | 사용 라이브러리 |
+|-----------|------|------|-----------------|
+| `wss-mqtt-api` | wss-mqtt-api 게이트웨이 경유 | JWT (WebSocket handshake) | websockets (기존) |
+| `mqtt` | MQTT over WSS 직접 연결 | JWT (VISS 방식) | paho-mqtt |
+
+- **MQTT 직접 연결 시**: VISS와 동일하게 JWT를 사용하여 TGU 접근 제어 수행.
+- **MQTT 클라이언트**: paho-mqtt 사용.
+
+### 2.3. 레이어 구조
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  TGU RPC SDK (tgu-rpc-sdk)                                       │
 │  - call(service, api, payload)        : RPC 호출                   │
 │  - subscribe_stream(service, api)     : 구독형 API                 │
-│  - publish / subscribe (기본 pub/sub 노출)                         │
+│  - publish / subscribe                : wss_mqtt_client 위임       │
+│  - transport 옵션을 wss_mqtt_client에 전달                          │
 ├─────────────────────────────────────────────────────────────────┤
-│  wss-mqtt-client (의존성, 재사용)                                   │
-│  - WssMqttClient: publish, subscribe, transport                   │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-   wss-mqtt-api (게이트웨이)
-         │
-         ▼
-   MQTT Broker ←→ TGU
+│  wss_mqtt_client (wss-mqtt-client 패키지)                          │
+│  - WssMqttClient(url, token, transport=...)                       │
+│  - transport="wss-mqtt-api" | "mqtt"  →  내부 Transport 구현 선택   │
+│  - publish(topic, payload), subscribe(topic)  →  통일 인터페이스    │
+├──────────────────────┬──────────────────────────────────────────┤
+│ WssMqttApiTransport  │  MqttOverWssTransport                     │
+│ (websockets + JSON)  │  (paho-mqtt)                              │
+└──────────────────────┴──────────────────────────────────────────┘
+         │                            │
+         ▼                            ▼
+   wss-mqtt-api              MQTT Broker (WSS)
+         │                            │
+         └────────────┬───────────────┘
+                      ▼
+               MQTT Broker ←→ TGU
 ```
 
-### 2.2. 패키지 구조 (예시)
+### 2.4. 패키지 구조
+
+**wss-mqtt-client (확장)**
+
+```
+wss-mqtt-client/
+├── wss_mqtt_client/
+│   ├── __init__.py
+│   ├── client.py              # WssMqttClient (transport 파라미터 추가)
+│   ├── transport/
+│   │   ├── __init__.py
+│   │   ├── base.py            # TransportInterface (Protocol)
+│   │   ├── wss_mqtt_api.py    # 기존 WebSocket + JSON Envelope
+│   │   └── mqtt.py            # paho-mqtt, MQTT over WSS
+│   ├── protocol.py, models.py, exceptions.py, constants.py  # 기존 유지
+│   └── ...
+├── pyproject.toml             # dependencies: websockets, paho-mqtt
+└── ...
+```
+
+**tgu-rpc-sdk**
 
 ```
 tgu-rpc-sdk/
 ├── tgu_rpc/
 │   ├── __init__.py
-│   ├── client.py          # TguRpcClient (WssMqttClient 래핑)
-│   ├── spec.py            # 서비스/API → 토픽/스키마 매핑
-│   ├── topics.py          # 토픽 패턴 생성 유틸
-│   └── exceptions.py      # TGU 전용 예외 (선택)
-├── pyproject.toml         # dependencies: wss-mqtt-client
+│   ├── client.py              # TguRpcClient (WssMqttClient 래핑, transport 전달)
+│   ├── topics.py              # 토픽 패턴 생성 유틸
+│   └── exceptions.py          # TGU 전용 예외 (선택)
+├── pyproject.toml             # dependencies: wss-mqtt-client (단일 의존성)
 ├── README.md
 └── examples/
-    ├── rpc_call.py
+    ├── rpc_call_wss_api.py
+    ├── rpc_call_mqtt.py
     └── subscribe_stream.py
 ```
 
-### 2.3. 기본 pub/sub 유지
+### 2.5. 초기화 흐름
 
-- `TguRpcClient`가 내부 `WssMqttClient` 참조를 노출 (예: `raw_client`)
-- 또는 `publish`, `subscribe` 메서드를 그대로 위임
-- 필요 시 토픽 필터 정책에 따라 정형화된 토픽만 허용하도록 선택 가능
+```python
+# TguRpcClient
+client = TguRpcClient(
+    url="wss://...",  # 또는 host/port (transport에 따라 해석)
+    token="jwt",
+    vehicle_id="v001",
+    transport="mqtt",  # wss_mqtt_client에 그대로 전달
+)
+
+# 내부: WssMqttClient(url=..., token=..., transport="mqtt") 생성
+# RPC (call, subscribe_stream), 기본 pub/sub (publish, subscribe) 모두 동일 WssMqttClient 사용
+```
+
+### 2.6. 기본 pub/sub 유지
+
+- `TguRpcClient`가 내부 `WssMqttClient`를 노출 (예: `client.raw_client` 또는 `client.wss_client`)
+- `publish`, `subscribe`는 `WssMqttClient`에 위임
+- transport 선택은 `WssMqttClient` 생성 시 한 번만 지정, RPC와 pub/sub 모두 동일 transport 사용
 
 ---
 
 ## 3. 개발 범위
 
-### 3.1. 포함 범위
+### 3.1. wss_mqtt_client 확장 (wss-mqtt-client 패키지)
 
 | 항목 | 설명 |
 |------|------|
-| TguRpcClient 클래스 | URL, token, vehicle_id(또는 식별자) 초기화 |
-| call(service, api, payload) | Request & Response RPC, 내부에서 토픽 생성·구독·발행·응답 수신 |
+| TransportInterface | publish, subscribe 추상 인터페이스 (Protocol) |
+| WssMqttApiTransport | 기존 Transport 로직 분리, wss-mqtt-api 프로토콜 |
+| MqttOverWssTransport | paho-mqtt 기반, MQTT over WSS, JWT 인증 (VISS 방식) |
+| WssMqttClient 수정 | `transport` 파라미터 추가, 선택된 Transport 인스턴스 사용 |
+| 통일 인터페이스 | publish(topic, payload), subscribe(topic) — 두 transport에서 동일 시그니처 |
+
+### 3.2. TGU RPC SDK (tgu-rpc-sdk 패키지)
+
+| 항목 | 설명 |
+|------|------|
+| TguRpcClient 클래스 | url, token, vehicle_id, transport 옵션 — wss_mqtt_client에 전달 |
+| call(service, api, payload) | Request & Response RPC, 토픽 생성·구독·발행·응답 수신 |
 | subscribe_stream(service, api) | VISSv3 스타일 구독, 장기 스트림 반환 |
-| 기본 pub/sub 노출 | publish, subscribe 메서드 또는 raw_client 참조 |
-| 서비스/API 명세 기반 토픽 생성 | 표준 토픽 패턴 적용 |
-| 타임아웃·에러 처리 | wss-mqtt-client 예외 활용 및 필요 시 래핑 |
+| 기본 pub/sub | publish, subscribe를 WssMqttClient에 위임, raw_client 노출 |
+| 토픽 패턴 | topics.py로 표준 토픽 패턴 적용 |
+| 타임아웃·에러 처리 | wss_mqtt_client 예외 활용 및 필요 시 래핑 |
 
 ### 3.2. 제외 범위 (본 단계)
 
@@ -104,29 +180,43 @@ tgu-rpc-sdk/
 
 ## 4. 개발 단계
 
-### Phase 1: 토픽·명세 정의 (사전 작업)
+### Phase 1: 토픽 패턴 정의 (사전 작업)
 
 - [ ] 토픽 패턴 규칙 확정 (예: `tgu/{vehicle_id}/{service}/{api}/request`, `.../response`, `.../data`)
-- [ ] Remote UDS, Remote Dashboard의 API 목록 및 각 API의 request/response 페이로드 스키마 확정
-- [ ] wss-mqtt-api에서의 Request 토픽 필터(ACL) 규칙 확정
+- [ ] wss-mqtt-api에서의 Request 토픽 필터(ACL) 규칙 확정 (wss-mqtt-api 사용 시)
 
-### Phase 2: SDK 골격 및 기본 RPC
+※ 서비스/API 상세 명세(페이로드 스키마)는 SDK 구현에 불필요. TGU 서버 및 클라이언트 애플리케이션 개발 시 별도 확정.
 
-- [ ] 프로젝트 셋업 (pyproject.toml, tgu_rpc 패키지)
-- [ ] `wss-mqtt-client` 의존성 추가 및 임포트 검증
-- [ ] 토픽 생성 유틸 구현 (`topics.py`)
-- [ ] 서비스/API 명세 매핑 모듈 (`spec.py`)
-- [ ] `TguRpcClient` 클래스 구현, `call()` 메서드
+### Phase 2: wss_mqtt_client — Transport 추상화 및 wss-mqtt-api 분리
 
-### Phase 3: 구독형 API 및 기본 pub/sub
+- [ ] TransportInterface (Protocol) 정의
+- [ ] 기존 Transport 로직을 WssMqttApiTransport로 분리
+- [ ] WssMqttClient에 `transport` 파라미터 추가, `transport="wss-mqtt-api"` 시 WssMqttApiTransport 사용
+- [ ] 기존 동작 호환성 유지 (transport 미지정 시 wss-mqtt-api 기본)
+
+### Phase 3: TGU RPC SDK — 골격 및 RPC (MVP 우선)
+
+- [ ] 프로젝트 셋업 (pyproject.toml, tgu_rpc 패키지, wss-mqtt-client 의존)
+- [ ] 토픽 생성 유틸 (`topics.py`)
+- [ ] TguRpcClient 구현 — WssMqttClient 생성 시 transport 전달
+- [ ] `call()` 메서드 구현
+
+### Phase 4: wss_mqtt_client — MQTT over WSS 지원
+
+- [ ] paho-mqtt 의존성 추가
+- [ ] MqttOverWssTransport 구현 (MQTT over WSS, JWT 인증 VISS 방식)
+- [ ] `transport="mqtt"` 옵션 지원, WssMqttClient에서 선택
+- [ ] publish/subscribe 인터페이스 통일 (두 transport에서 동일 시그니처)
+
+### Phase 5: TGU RPC SDK — 구독형 API 및 기본 pub/sub
 
 - [ ] `subscribe_stream()` 메서드 구현
-- [ ] 기본 pub/sub 메서드 노출 (publish, subscribe 또는 raw_client)
-- [ ] 예제 코드 작성 (rpc_call, subscribe_stream)
+- [ ] 기본 pub/sub 노출 (publish, subscribe 위임, raw_client 또는 wss_client 노출)
+- [ ] 예제 코드 작성 (rpc_call_wss_api, rpc_call_mqtt, subscribe_stream)
 
-### Phase 4: 문서화 및 테스트
+### Phase 6: 문서화 및 테스트
 
-- [ ] README, 사용법, API 레퍼런스
+- [ ] wss-mqtt-client, tgu-rpc-sdk 각 README 및 사용법
 - [ ] 단위 테스트 (mock 기반)
 - [ ] 통합 테스트 (실 서버 연동 시 선택)
 
@@ -134,7 +224,9 @@ tgu-rpc-sdk/
 
 ## 5. 사용 시나리오 (목표 UX)
 
-### 5.1. RPC 호출
+인터페이스는 transport 옵션과 관계없이 동일하다.
+
+### 5.1. RPC 호출 (wss-mqtt-api)
 
 ```python
 from tgu_rpc import TguRpcClient
@@ -143,26 +235,58 @@ async with TguRpcClient(
     url="wss://api.example.com/v1/messaging",
     token="jwt",
     vehicle_id="vehicle_001",
+    transport="wss-mqtt-api",  # 기본값, wss_mqtt_client에 전달
 ) as client:
     result = await client.call("RemoteUDS", "readDTC", {"source": 0x01})
 ```
 
-### 5.2. 구독형 API (VISSv3 스타일)
+### 5.2. RPC 호출 (MQTT over WSS, JWT 인증)
 
 ```python
+# transport="mqtt" → wss_mqtt_client가 paho로 MQTT over WSS 연결
+async with TguRpcClient(
+    url="wss://mqtt.example.com:443/mqtt",  # 또는 host, port (wss_mqtt_client 사양 따름)
+    token="jwt",  # VISS 방식 JWT
+    vehicle_id="vehicle_001",
+    transport="mqtt",
+) as client:
+    result = await client.call("RemoteUDS", "readDTC", {"source": 0x01})
+```
+
+### 5.3. 구독형 API (VISSv3 스타일)
+
+```python
+# transport 옵션과 무관하게 동일한 인터페이스
 async with client.subscribe_stream("RemoteDashboard", "vehicleSpeed") as stream:
     async for event in stream:
         print(event.payload)
 ```
 
-### 5.3. 기본 pub/sub
+### 5.4. 기본 pub/sub (동일 transport 사용)
 
 ```python
-# raw_client를 통한 저수준 제어
-await client.raw_client.publish("custom/topic", payload)
-async with client.raw_client.subscribe("custom/response") as s:
+# RPC와 동일한 transport. wss_mqtt_client의 publish/subscribe 위임
+await client.publish("custom/topic", payload)
+async with client.subscribe("custom/response") as s:
     async for event in s:
         ...
+```
+
+### 5.5. wss_mqtt_client 직접 사용 (pub/sub 전용)
+
+```python
+# TGU RPC 없이 pub/sub만 필요할 때도 transport 선택 가능
+from wss_mqtt_client import WssMqttClient
+
+async with WssMqttClient(
+    url="wss://...",
+    token="jwt",
+    transport="mqtt",
+) as client:
+    await client.publish("topic", payload)
+    async with client.subscribe("topic/response") as stream:
+        async for event in stream:
+            ...
 ```
 
 ---
@@ -171,11 +295,30 @@ async with client.raw_client.subscribe("custom/response") as s:
 
 ### 6.1. 의존성
 
-- Python 3.8+
-- wss-mqtt-client (기존 SDK)
-- websockets (wss-mqtt-client 전이 의존성)
+**tgu-rpc-sdk**
 
-### 6.2. 참조 문서
+| 패키지 | 용도 |
+|--------|------|
+| wss-mqtt-client | 유일 직접 의존성. transport 로직 모두 포함 |
+
+**wss-mqtt-client**
+
+| 패키지 | 용도 |
+|--------|------|
+| websockets | wss-mqtt-api transport |
+| paho-mqtt | MQTT over WSS transport |
+| Python 3.8+ | - |
+
+- MQTT transport: paho-mqtt + asyncio 래핑 (loop_start 등) 활용
+
+### 6.2. 인증
+
+| transport | 인증 방식 |
+|-----------|-----------|
+| wss-mqtt-api | JWT (WebSocket handshake, Authorization 헤더 또는 쿼리 파라미터) |
+| mqtt | JWT (VISS 방식, MQTT username/password 또는 확장 메커니즘) |
+
+### 6.3. 참조 문서
 
 - `docs/system_specification_v1.md` — wss-mqtt-api 사양
 - `docs/wss-mqtt-message-schema.json` — 메시지 Envelope 스키마
@@ -186,15 +329,15 @@ async with client.raw_client.subscribe("custom/response") as s:
 
 | 리스크 | 대응 |
 |--------|------|
-| 토픽 패턴·명세 미확정 | Phase 1을 우선 진행하고, 확정 후 SDK 반영 |
+| 토픽 패턴 미확정 | Phase 1을 우선 진행하고, 확정 후 SDK 반영 |
 | wss-mqtt-api ACL 미정의 | 토픽 패턴을 유연하게 설계하여 ACL 추가 시 매핑만 수정 |
-| 서비스/API 추가 시 스키마 변경 | spec.py를 확장 가능하게 설계, 파일 또는 코드 기반 명세 |
+| paho-mqtt 비동기 통합 | paho-mqtt는 기본 동기 API. asyncio 루프에서 실행하거나 `loop_start` 활용 |
 
 ---
 
-## 8. 추가로 제공이 필요한 정보
+## 8. 추가로 제공이 필요한 정보 (SDK 구현용)
 
-개발을 진행하기 위해 아래 정보가 필요합니다.
+SDK 구현을 위해 필요한 정보. **서비스·API 상세 명세(페이로드 스키마)는 SDK에 불필요**하며, TGU 서버 및 클라이언트 애플리케이션 개발 시 별도 확정한다.
 
 ### 8.1. 토픽 패턴 (필수)
 
@@ -205,17 +348,7 @@ async with client.raw_client.subscribe("custom/response") as s:
 | **구독형 데이터 토픽** | VISSv3 스타일 이벤트/주기 발행 토픽 | `tgu/{vehicle_id}/{service}/{api}/data` |
 | **vehicle_id 대체** | 차량 식별자 외 다른 식별자 사용 여부 (예: device_id, session_id) | - |
 
-### 8.2. 서비스·API 명세 (필수)
-
-| 서비스 | API 목록 | 각 API의 Request/Response 스키마 |
-|--------|----------|----------------------------------|
-| **Remote UDS** | readDTC, clearDTC, ... (전체 목록) | 필드 정의, 타입, 필수/선택 여부 |
-| **Remote Dashboard** | vehicleSpeed, engineRPM, ... (전체 목록) | 동일 |
-
-- RPC용 API와 구독용 API를 구분한 목록
-- 각 API별 타임아웃 권장값 (있는 경우)
-
-### 8.3. wss-mqtt-api 토픽 필터 규칙 (권장)
+### 8.2. wss-mqtt-api 토픽 필터 규칙 (권장, wss-mqtt-api 사용 시)
 
 | 항목 | 설명 |
 |------|------|
@@ -223,13 +356,19 @@ async with client.raw_client.subscribe("custom/response") as s:
 | 허용 SUBSCRIBE 토픽 패턴 | 구독 허용 토픽 패턴 |
 | JWT 클레임과 토픽의 매핑 | vehicle_id 등이 JWT에서 추출되는 경우, 토픽 내 식별자와의 매핑 규칙 |
 
+### 8.3. MQTT JWT 인증 (transport="mqtt" 사용 시)
+
+| 항목 | 설명 |
+|------|------|
+| JWT 전달 방식 | username/password, CONNECT 확장 프로퍼티 등 VISS 사례 기준 |
+| TGU 접근 제어 | JWT 클레임 기반 vehicle_id 또는 권한 검증 방식 |
+
 ### 8.4. 기타 (선택)
 
 | 항목 | 설명 |
 |------|------|
 | 기본 타임아웃 | RPC call 기본 타임아웃 (현재 사양서 30초) |
 | vehicle_id 획득 방식 | SDK 초기화 시 사용자 입력 vs JWT 클레임 등 |
-| VISSv3 명세 참조 | 참조할 VISSv3 문서 또는 스키마 URL |
 
 ---
 
@@ -238,4 +377,7 @@ async with client.raw_client.subscribe("custom/response") as s:
 | 버전 | 일자 | 작성 | 변경 내용 |
 |------|------|------|-----------|
 | 0.1 | 2025-03-13 | - | 초안 작성 |
+| 0.2 | 2025-03-13 | - | Transport 옵션(wss-mqtt-api/mqtt) 추가, paho-mqtt·JWT(VISS) 반영, 서비스/API 명세는 SDK 외부로 분리 |
+| 0.3 | 2025-03-13 | - | Transport를 wss_mqtt_client에 집중, TGU RPC SDK는 transport 전달만. 구조적 일관성 반영 |
+| 0.4 | 2025-03-13 | - | Phase 3·4 순서 변경: RPC MVP 우선 (2→3→4→5), MQTT 지원은 Phase 4로 |
 
