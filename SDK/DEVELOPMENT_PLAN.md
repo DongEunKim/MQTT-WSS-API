@@ -78,7 +78,7 @@ await client.disconnect()
 ### 2.2 모듈 구조 (제안)
 
 ```
-wss-mqtt-client-sdk-for-python/
+SDK/
 ├── pyproject.toml              # 프로젝트 메타데이터, 의존성
 ├── README.md
 ├── DEVELOPMENT_PLAN.md         # 본 문서

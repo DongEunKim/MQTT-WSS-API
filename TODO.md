@@ -7,7 +7,7 @@
 ## SDK 개선
 
 ### 기능 확장
-- [ ] **MessagePack 지원**: 사양 5.1. `use_messagepack=True` 옵션, 바이너리 직렬화/역직렬화
+- [ ] **MessagePack 지원**: 사양 5.1. payload가 `bytes`이면 자동으로 MessagePack 사용 (플래그 없음)
 - [ ] **재연결 정책**: 연결 끊김 시 exponential backoff 자동 재연결
 - [ ] **동기(Sync) 래퍼**: `asyncio.run()` 기반 sync API (예: `WssMqttClientSync`)
 

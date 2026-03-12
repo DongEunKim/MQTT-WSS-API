@@ -14,7 +14,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # 패키지 설치
-pip install -e SDK/wss-mqtt-client-sdk-for-python
+pip install -e SDK
 ```
 
 이후 예제 실행 시에도 프로젝트 루트에서 작업합니다.
@@ -24,9 +24,9 @@ pip install -e SDK/wss-mqtt-client-sdk-for-python
 **터미널 1** (프로젝트 루트, 가상환경 활성화 후):
 
 ```bash
-python SDK/wss-mqtt-client-sdk-for-python/examples/run_mock_server.py
+python SDK/examples/run_mock_server.py
 # 또는 특정 포트 지정
-python SDK/wss-mqtt-client-sdk-for-python/examples/run_mock_server.py --port 9000
+python SDK/examples/run_mock_server.py --port 9000
 ```
 
 서버가 `ws://localhost:8765` 에서 대기합니다.
@@ -36,7 +36,7 @@ python SDK/wss-mqtt-client-sdk-for-python/examples/run_mock_server.py --port 900
 **터미널 2** (프로젝트 루트):
 
 ```bash
-python SDK/wss-mqtt-client-sdk-for-python/examples/subscriber.py
+python SDK/examples/subscriber.py
 ```
 
 `test/response` 토픽을 구독하며 메시지를 기다립니다.
@@ -46,11 +46,11 @@ python SDK/wss-mqtt-client-sdk-for-python/examples/subscriber.py
 **터미널 3** (프로젝트 루트):
 
 ```bash
-python SDK/wss-mqtt-client-sdk-for-python/examples/publisher.py
+python SDK/examples/publisher.py
 # 커스텀 메시지
-python SDK/wss-mqtt-client-sdk-for-python/examples/publisher.py --message '{"action":"start","device_id":"001"}'
+python SDK/examples/publisher.py --message '{"action":"start","device_id":"001"}'
 # 5회 발행, 2초 간격
-python SDK/wss-mqtt-client-sdk-for-python/examples/publisher.py -n 5 -i 2
+python SDK/examples/publisher.py -n 5 -i 2
 ```
 
 ## 5. 동작 흐름

@@ -21,7 +21,7 @@ import logging
 import sys
 from pathlib import Path
 
-# 프로젝트 루트를 path에 추가
+# SDK 루트(tests 상위)를 path에 추가
 _root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_root))
 
@@ -52,7 +52,7 @@ def main() -> None:
     url = f"ws://localhost:{args.port}"
     logger.info("Mock 서버 시작: %s", url)
     logger.info(
-        "연결 후 발행/구독 예제: python SDK/.../examples/publisher.py / subscriber.py"
+        "연결 후 발행/구독 예제: python SDK/examples/publisher.py / subscriber.py"
     )
     if not args.no_simulate:
         logger.info(
