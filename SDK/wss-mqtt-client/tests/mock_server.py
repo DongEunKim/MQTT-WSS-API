@@ -118,9 +118,26 @@ class MockWssMqttServer:
             async with self._lock:
                 self._received_publishes.append((topic, payload))
             await self._send_ack(websocket, req_id, 200)
-            if self._simulate_tgu and "/command" in topic:
-                response_topic = topic.replace("/command", "/response")
-                await self.inject_subscription_to_topic(response_topic, payload)
+            if self._simulate_tgu:
+                if "/command" in topic:
+                    response_topic = topic.replace("/command", "/response")
+                    await self.inject_subscription_to_topic(response_topic, payload)
+                elif topic.endswith("/request") and isinstance(payload, dict):
+                    # WMT/WMO RPC 패턴: payload에 response_topic, request_id, request
+                    resp_topic = payload.get("response_topic")
+                    req_id = payload.get("request_id")
+                    req = payload.get("request", {})
+                    if resp_topic and req_id:
+                        action_name = req.get("action", "unknown")
+                        result = {"action": action_name, "status": "ok"}
+                        if action_name == "readDTC":
+                            result["dtcList"] = []
+                        rpc_response = {
+                            "request_id": req_id,
+                            "result": result,
+                            "error": None,
+                        }
+                        await self.inject_subscription_to_topic(resp_topic, rpc_response)
 
         elif action == "SUBSCRIBE":
             async with self._lock:

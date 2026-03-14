@@ -69,25 +69,26 @@
 - [x] RPC Payload: `request_id`, `response_topic`, `request` (VISSv2 스타일)
 - [x] WMT 발행 시 vehicle_id ACL 필터
 
-### 2.2 RPC MVP
+### 2.2 RPC MVP ✅
+> 상세: `docs/TODO_2.2_RPC_MVP_IMPLEMENTATION_PLAN.md`
 - [x] tgu-rpc-sdk 프로젝트 셋업 (SDK/tgu-rpc-sdk, wss-mqtt-client 의존)
-- [ ] 토픽 생성 유틸 (`topics.py`): `build_request_topic`, `build_response_topic`
-- [ ] TguRpcClient 구현: WssMqttClient 래핑, transport 전달, client_id 자동 생성
-- [ ] `call(service, payload)` 구현
+- [x] 토픽 생성 유틸 (`topics.py`): `build_request_topic`, `build_response_topic`
+- [x] TguRpcClient 구현: WssMqttClient 래핑, transport 전달, client_id 자동 생성
+- [x] `call(service, payload)` 구현
   - payload 규격: `{ "action": str, "params": object? }`
   - request_id, response_topic 생성 → WMT 발행 → response_topic 구독 → request_id 매칭 → 응답 반환
-  - 타임아웃 처리
+  - asyncio.Lock으로 동시 call 직렬화, 타임아웃 처리
 
 ### 2.3 구독형 API 및 pub/sub
 - [ ] `subscribe_stream(service, api)` 메서드 구현 (VISSv3 스타일)
 - [ ] 기본 pub/sub 노출 (publish, subscribe 위임, raw_client 노출)
-- [ ] 예제: rpc_call_wss_api, rpc_call_mqtt, subscribe_stream
+- [ ] 예제: rpc_call_mqtt, subscribe_stream (rpc_call_wss_api ✅)
 
 ### 2.4 문서화 및 테스트
-- [ ] tgu-rpc-sdk README 및 사용법
-- [ ] 단위 테스트 (mock 기반, call 시나리오)
-- [ ] 통합 테스트: ACK 에러(403, 422), 타임아웃, RPC 패턴
-- [ ] Mock 서버 WMT/WMO 패턴 시뮬레이션 (선택)
+- [x] tgu-rpc-sdk README 및 사용법
+- [x] 단위 테스트 (mock 기반, call 시나리오)
+- [x] 통합 테스트: RPC 패턴 (Mock 서버 WMT/WMO 시뮬레이션 포함)
+- [ ] ACK 에러(403, 422), 타임아웃 시나리오 (추가)
 
 ---
 
@@ -121,3 +122,4 @@
 - [x] 발행/구독 예제 및 실행 가이드
 - [x] 가상환경, requirements.txt, 프로젝트 루트 README
 - [x] **RPC 설계 확정**: MQTT_RPC_METHODOLOGY, RPC_TRANSPORT_LAYER_DESIGN (VISSv2 패턴, response_topic, call(service, payload))
+- [x] **TGU RPC SDK MVP**: topics.py, TguRpcClient, call(), 예제, Mock WMT/WMO 시뮬레이션
