@@ -60,28 +60,34 @@
 
 ## 2. TGU RPC SDK 개발 (상위 계층)
 
-> wss_mqtt_client가 준비된 후 진행.
+> wss_mqtt_client가 준비된 후 진행.  
+> 상세: `docs/TGU_RPC_SDK_DEVELOPMENT_PLAN.md`, `docs/RPC_TRANSPORT_LAYER_DESIGN.md`
 
-### 2.1 사전 작업: 토픽 패턴 정의
-- [ ] 토픽 패턴 규칙 확정 (예: `tgu/{vehicle_id}/{service}/{api}/request`, `.../response`, `.../data`)
-- [ ] wss-mqtt-api Request 토픽 필터(ACL) 규칙 확정
+### 2.1 사전 작업: 토픽·Payload 패턴 ✅
+> 상세: `docs/TOPIC_AND_ACL_SPEC.md`, `docs/MQTT_RPC_METHODOLOGY.md`
+- [x] 토픽 패턴: `WMT/{service}/{vehicle_id}/request`, `WMO/{service}/{vehicle_id}/{client_id}/response`
+- [x] RPC Payload: `request_id`, `response_topic`, `request` (VISSv2 스타일)
+- [x] WMT 발행 시 vehicle_id ACL 필터
 
 ### 2.2 RPC MVP
 - [x] tgu-rpc-sdk 프로젝트 셋업 (SDK/tgu-rpc-sdk, wss-mqtt-client 의존)
-- [ ] 토픽 생성 유틸 (`topics.py`)
-- [ ] TguRpcClient 구현 (WssMqttClient 래핑, transport 전달)
-- [ ] `call()` 메서드 구현
+- [ ] 토픽 생성 유틸 (`topics.py`): `build_request_topic`, `build_response_topic`
+- [ ] TguRpcClient 구현: WssMqttClient 래핑, transport 전달, client_id 자동 생성
+- [ ] `call(service, payload)` 구현
+  - payload 규격: `{ "action": str, "params": object? }`
+  - request_id, response_topic 생성 → WMT 발행 → response_topic 구독 → request_id 매칭 → 응답 반환
+  - 타임아웃 처리
 
 ### 2.3 구독형 API 및 pub/sub
-- [ ] `subscribe_stream()` 메서드 구현
+- [ ] `subscribe_stream(service, api)` 메서드 구현 (VISSv3 스타일)
 - [ ] 기본 pub/sub 노출 (publish, subscribe 위임, raw_client 노출)
-- [ ] 예제 코드 작성 (rpc_call_wss_api, rpc_call_mqtt, subscribe_stream)
+- [ ] 예제: rpc_call_wss_api, rpc_call_mqtt, subscribe_stream
 
 ### 2.4 문서화 및 테스트
-- [ ] wss-mqtt-client, tgu-rpc-sdk README 및 사용법
-- [ ] 단위 테스트 (mock 기반)
-- [ ] 통합 테스트 확장: ACK 에러(403, 422 등), 타임아웃 시나리오
-- [ ] Mock 서버 wss 지원 (실제 TLS 테스트용, 선택)
+- [ ] tgu-rpc-sdk README 및 사용법
+- [ ] 단위 테스트 (mock 기반, call 시나리오)
+- [ ] 통합 테스트: ACK 에러(403, 422), 타임아웃, RPC 패턴
+- [ ] Mock 서버 WMT/WMO 패턴 시뮬레이션 (선택)
 
 ---
 
@@ -114,3 +120,4 @@
 - [x] **API 사용성 단순화**: WssMqttClient(기본), WssMqttClientAsync(고급), 콜백 subscribe, 예제 정리
 - [x] 발행/구독 예제 및 실행 가이드
 - [x] 가상환경, requirements.txt, 프로젝트 루트 README
+- [x] **RPC 설계 확정**: MQTT_RPC_METHODOLOGY, RPC_TRANSPORT_LAYER_DESIGN (VISSv2 패턴, response_topic, call(service, payload))
