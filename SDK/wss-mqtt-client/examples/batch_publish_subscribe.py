@@ -6,10 +6,10 @@ publish_many()와 subscribe_many() 사용법을 보여준다.
 
 Mock 서버 테스트:
     # 터미널 1: Mock 서버
-    python examples/run_mock_server.py
+    python SDK/examples/run_mock_server.py
 
-    # 터미널 2: 배치 예제 실행
-    WSS_MQTT_URL=ws://localhost:8765 python examples/batch_publish_subscribe.py
+    # 터미널 2: 배치 예제 실행 (프로젝트 루트에서)
+    WSS_MQTT_URL=ws://localhost:8765 python SDK/wss-mqtt-client/examples/batch_publish_subscribe.py
 
 환경변수:
     WSS_MQTT_URL : API URL (기본: ws://localhost:8765)

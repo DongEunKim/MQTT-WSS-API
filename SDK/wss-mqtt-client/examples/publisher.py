@@ -8,16 +8,16 @@ test/response 구독자가 메시지를 수신한다.
 
 Usage:
     # 터미널 1: Mock 서버
-    python examples/run_mock_server.py
+    python SDK/examples/run_mock_server.py
 
     # 터미널 2: 구독 클라이언트
-    python examples/subscriber.py
+    python SDK/wss-mqtt-client/examples/subscriber.py
 
     # 터미널 3: 발행 클라이언트
-    python examples/publisher.py
-    python examples/publisher.py --message '{"action":"start"}'
-    python examples/publisher.py --binary  # bytes(MessagePack) 발행
-    python examples/publisher.py -n 5 -i 2  # 5회 발행, 2초 간격
+    python SDK/wss-mqtt-client/examples/publisher.py
+    python SDK/wss-mqtt-client/examples/publisher.py --message '{"action":"start"}'
+    python SDK/wss-mqtt-client/examples/publisher.py --binary  # bytes(MessagePack) 발행
+    python SDK/wss-mqtt-client/examples/publisher.py -n 5 -i 2  # 5회 발행, 2초 간격
 
 환경변수:
     WSS_URL  : 연결 URL (기본: ws://localhost:8765)

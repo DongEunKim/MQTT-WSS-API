@@ -8,8 +8,8 @@ Usage:
     # MQTT 브로커 실행 (Docker)
     # cd SDK && docker compose up -d
 
-    python examples/mqtt_publisher.py
-    python examples/mqtt_publisher.py --message '{"sensor": 42}'
+    python SDK/wss-mqtt-client/examples/mqtt_publisher.py
+    python SDK/wss-mqtt-client/examples/mqtt_publisher.py --message '{"sensor": 42}'
 
 환경변수:
     MQTT_URL  : MQTT 브로커 URL (기본: mqtt://localhost:1883)

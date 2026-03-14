@@ -7,13 +7,13 @@ test/response 토픽을 구독하고 수신 메시지를 출력한다.
 
 Usage:
     # 터미널 1: Mock 서버
-    python examples/run_mock_server.py
+    python SDK/examples/run_mock_server.py
 
-    # 터미널 2: 구독 클라이언트
-    python examples/subscriber.py
+    # 터미널 2: 구독 클라이언트 (프로젝트 루트에서)
+    python SDK/wss-mqtt-client/examples/subscriber.py
 
     # 테스트용 (5초 후 자동 종료)
-    RUN_TIMEOUT=5 python examples/subscriber.py
+    RUN_TIMEOUT=5 python SDK/wss-mqtt-client/examples/subscriber.py
 
 환경변수:
     WSS_URL    : 연결 URL (기본: ws://localhost:8765)

@@ -9,10 +9,10 @@ Usage:
     # cd SDK && docker compose up -d
 
     # TCP 연결 (기본)
-    python examples/mqtt_subscriber.py
+    python SDK/wss-mqtt-client/examples/mqtt_subscriber.py
 
     # WebSocket 연결
-    MQTT_URL=ws://localhost:9001 python examples/mqtt_subscriber.py
+    MQTT_URL=ws://localhost:9001 python SDK/wss-mqtt-client/examples/mqtt_subscriber.py
 
 환경변수:
     MQTT_URL       : MQTT 브로커 URL (기본: mqtt://localhost:1883)

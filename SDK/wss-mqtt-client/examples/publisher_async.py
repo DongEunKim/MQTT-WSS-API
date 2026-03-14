@@ -5,8 +5,8 @@
 고급 사용자용. WssMqttClientAsync 사용.
 
 Usage:
-    python examples/run_mock_server.py  # 터미널 1
-    python examples/publisher_async.py  # 터미널 2
+    python SDK/examples/run_mock_server.py  # 터미널 1
+    python SDK/wss-mqtt-client/examples/publisher_async.py  # 터미널 2
 
 환경변수:
     WSS_URL : 연결 URL (기본: ws://localhost:8765)

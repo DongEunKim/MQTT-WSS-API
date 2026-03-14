@@ -196,7 +196,7 @@ client = TguRpcClient(
 
 ### Phase 3: TGU RPC SDK — 골격 및 RPC (MVP 우선)
 
-- [ ] 프로젝트 셋업 (pyproject.toml, tgu_rpc 패키지, wss-mqtt-client 의존)
+- [x] 프로젝트 셋업 (SDK/tgu-rpc-sdk, pyproject.toml, tgu_rpc 패키지, wss-mqtt-client 의존)
 - [ ] 토픽 생성 유틸 (`topics.py`)
 - [ ] TguRpcClient 구현 — WssMqttClient 생성 시 transport 전달
 - [ ] `call()` 메서드 구현

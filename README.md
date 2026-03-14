@@ -8,10 +8,10 @@ WebSocket Secure(WSS) 클라이언트와 MQTT 브로커 간 프로토콜 변환 
 ├── docs/                    # 사양서
 │   ├── system_specification_v1.md
 │   └── wss-mqtt-message-schema.json
-└── SDK/                     # Python 클라이언트 SDK
-    ├── wss_mqtt_client/
-    ├── examples/
-    └── tests/
+└── SDK/                     # Python SDK
+    ├── wss-mqtt-client/     # WSS-MQTT 클라이언트
+    ├── tgu-rpc-sdk/         # TGU RPC SDK (준비 중)
+    └── examples/            # Mock 서버, 실행 가이드
 ```
 
 ## 개발 환경 설정
@@ -26,17 +26,18 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # SDK 설치 (에디터블 모드)
-pip install -e SDK
+pip install -e SDK/wss-mqtt-client
 
-# 또는 requirements.txt 사용
+# 또는 requirements.txt 사용 (개발 의존성 포함)
 pip install -r requirements.txt
 ```
 
 이후 `python` 명령으로 SDK 예제 및 테스트를 실행할 수 있습니다.
 
-## Mock 서버 및 예제 실행
+## 문서
 
-`SDK/examples/README.md` 를 참고하세요.
+- [SDK 사용 설명서](docs/SDK_USER_GUIDE.md) - 설치, 사용법, API 참조
+- [SDK 예제 실행](SDK/examples/README.md) - Mock 서버 및 예제 실행 방법
 
 ### 주요 기능 (SDK)
 

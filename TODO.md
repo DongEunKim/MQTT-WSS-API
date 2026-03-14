@@ -67,7 +67,7 @@
 - [ ] wss-mqtt-api Request 토픽 필터(ACL) 규칙 확정
 
 ### 2.2 RPC MVP
-- [ ] tgu-rpc-sdk 프로젝트 셋업 (wss-mqtt-client 의존)
+- [x] tgu-rpc-sdk 프로젝트 셋업 (SDK/tgu-rpc-sdk, wss-mqtt-client 의존)
 - [ ] 토픽 생성 유틸 (`topics.py`)
 - [ ] TguRpcClient 구현 (WssMqttClient 래핑, transport 전달)
 - [ ] `call()` 메서드 구현
