@@ -83,16 +83,24 @@
 > 상세 계획: `docs/TODO_2.3_IMPLEMENTATION_PLAN.md`  
 > 패턴 구분: **call_stream** (1요청→멀티응답) vs **subscribe_stream** (pub/sub 구독)
 
+- [ ] **stop()**: `run_forever()` 블로킹 해제 — WssMqttClient, TguRpcClient
+  - 다른 스레드/시그널 핸들러에서 `client.stop()` 호출 시 run_forever() 반환
 - [ ] **call_stream**: 1회 요청 → 멀티 응답
   - **동기 (TguRpcClient)**: `call_stream(..., callback=..., on_complete=...)` 콜백 기반
   - **비동기 (TguRpcClientAsync)**: `async for chunk in call_stream(...)` iterator
 - [ ] **subscribe_stream**: pub/sub 구독형 (VISSv3 스타일)
-  - **동기**: `subscribe_stream(..., callback=...)` + `run_forever()`
+  - **동기**: `subscribe_stream(..., callback=...)` + `run_forever()` (+ `stop()`)
   - **비동기**: `async with subscribe_stream(...) as stream: async for ...`
 - [ ] 기본 pub/sub 노출 — 동기/비동기 각각 publish, subscribe 위임
 - [ ] 예제: call_stream, subscribe_stream (동기+비동기)
 
-### 2.4 문서화 및 테스트
+### 2.4 Heartbeat (TODO 2.3 완료 후)
+> 종단 간·서비스별 heartbeat. subscribe_stream 등 장기 구독 시 TGU가 클라이언트 끊김 감지.
+
+- [ ] 스트림 수준 양방향 heartbeat 설계 (토픽, 주기, 타임아웃)
+- [ ] TGU/클라이언트 구현 — TODO 2.3 완료 후 진행
+
+### 2.5 문서화 및 테스트
 - [x] tgu-rpc-sdk README 및 사용법
 - [x] 단위 테스트 (mock 기반, call 시나리오)
 - [x] 통합 테스트: RPC 패턴 (Mock 서버 WMT/WMO 시뮬레이션 포함)

@@ -32,6 +32,7 @@
 
 | 항목 | 설명 | 우선순위 |
 |------|------|----------|
+| **stop()** | run_forever() 블로킹 해제. WssMqttClient, TguRpcClient | P0 |
 | **call_stream(service, payload)** | 1회 요청 → 멀티 응답 (동일 request_id) | P0 |
 | **subscribe_stream(service, api)** | pub/sub 구독형 (VISSv3 스타일) | P1 |
 | **기본 pub/sub 노출** | publish, subscribe 위임, raw_client | P2 |
@@ -262,14 +263,16 @@ async def subscribe_stream(
 
 ### 5.2 추가할 위임 메서드
 
-**TguRpcClient (동기)** — WssMqttClient와 동일 패턴
+**TguRpcClient (동기)** — WssMqttClient와 동일 패턴. `stop()`은 WssMqttClient(wss-mqtt-client)에 선행 구현 필요.
 ```python
 def publish(self, topic: str, payload: Any) -> None:
     """토픽에 메시지 발행 (블로킹)."""
 def subscribe(self, topic: str, callback: Callable, queue_maxsize: Optional[int] = None) -> None:
     """토픽 구독. connect() 전/후 호출. run_forever()로 수신."""
 def run_forever(self, timeout: Optional[float] = None) -> None:
-    """수신 루프 (블로킹). subscribe_stream, subscribe 사용 시 필요."""
+    """수신 루프 (블로킹). subscribe_stream, subscribe 사용 시 필요. stop()으로 종료 가능."""
+def stop(self) -> None:
+    """run_forever() 블로킹 해제. 다른 스레드/시그널 핸들러에서 호출."""
 ```
 
 **TguRpcClientAsync (비동기)**
@@ -309,7 +312,7 @@ with TguRpcClient(...) as client:
 client = TguRpcClient(...)
 client.connect()
 client.subscribe_stream("RemoteDashboard", "vehicleSpeed", callback=lambda e: print(e.payload))
-client.run_forever()  # Ctrl+C로 종료
+client.run_forever()  # stop() 또는 Ctrl+C로 종료
 ```
 
 ### 6.2 비동기식 (고급 사용자) — async iterator
@@ -358,8 +361,9 @@ async with TguRpcClientAsync(...) as client:
 
 | 단계 | 작업 | 산출물 |
 |------|------|--------|
+| 0 | **stop()** — WssMqttClient, TguRpcClient에 추가. run_forever() 블로킹 해제용 | `client_sync.py`, `client.py` |
 | 1 | topics.py에 `build_stream_topic` 추가 | `topics.py` |
-| 2a | **TguRpcClient** (동기): `call_stream(callback)`, `subscribe_stream(callback)`, `publish`, `subscribe`, `run_forever` | `client.py` |
+| 2a | **TguRpcClient** (동기): `call_stream(callback)`, `subscribe_stream(callback)`, `publish`, `subscribe`, `run_forever`, `stop` | `client.py` |
 | 2b | **TguRpcClientAsync** (비동기): `call_stream()` iterator, `subscribe_stream()` iterator, `publish`, `subscribe`, `unsubscribe` | `client_async.py` |
 | 3 | call_stream 구현 — 동기(콜백 블로킹), 비동기(async for) | `client.py`, `client_async.py` |
 | 4 | subscribe_stream 구현 — 동기(콜백+run_forever), 비동기(async with stream) | `client.py`, `client_async.py` |
@@ -379,7 +383,17 @@ async with TguRpcClientAsync(...) as client:
 
 ---
 
-## 10. 참조
+## 10. 향후 작업 (TODO 2.3 완료 후)
+
+### Heartbeat (종단 간·서비스별)
+
+- **목적**: subscribe_stream 등 장기 구독 시, TGU가 클라이언트 끊김을 감지하여 불필요한 발행 중단
+- **설계**: 스트림 수준 양방향 heartbeat (토픽, 주기, 타임아웃)
+- **진행 시점**: TODO 2.3 완료 후
+
+---
+
+## 11. 참조
 
 - `docs/TGU_RPC_SDK_DEVELOPMENT_PLAN.md` — Phase 5, 5.3 구독형 API
 - `docs/TOPIC_AND_ACL_SPEC.md` — WMT/WMO 토픽 규격
@@ -387,3 +401,4 @@ async with TguRpcClientAsync(...) as client:
 - `SDK/tgu-rpc-sdk/tgu_rpc/client.py` — TguRpcClient (동기)
 - `SDK/tgu-rpc-sdk/tgu_rpc/client_async.py` — TguRpcClientAsync (비동기, TODO 2.3 대상)
 - `SDK/tgu-rpc-sdk/tgu_rpc/topics.py` — 토픽 유틸
+- `TODO.md` — 2.4 Heartbeat (TODO 2.3 완료 후)
