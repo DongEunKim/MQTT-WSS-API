@@ -69,15 +69,27 @@ class MockWssMqttServer:
             await self._server.wait_closed()
             self._server = None
 
+    def _decode_message(self, raw: str | bytes) -> dict:
+        """수신 메시지 디코딩. bytes는 MessagePack 우선."""
+        if isinstance(raw, str):
+            return json.loads(raw)
+        try:
+            import msgpack
+            return msgpack.unpackb(raw, raw=False)
+        except ImportError:
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            return json.loads(raw.decode("utf-8"))
+
     async def _handle_connection(self, websocket: Any) -> None:
         """클라이언트 연결 처리."""
         try:
             async for raw in websocket:
                 try:
-                    data = json.loads(raw)
-                except json.JSONDecodeError:
+                    data = self._decode_message(raw)
+                except (json.JSONDecodeError, ValueError):
                     await self._send_ack(
-                        websocket, "unknown", 400, {"message": "Invalid JSON"}
+                        websocket, "unknown", 400, {"message": "Invalid message"}
                     )
                     continue
                 await self._handle_request(websocket, data)

@@ -9,6 +9,7 @@ from wss_mqtt_client.protocol import (
     build_request,
     decode_message,
     encode_request,
+    encode_request_binary,
     generate_req_id,
 )
 
@@ -67,7 +68,84 @@ def test_decode_message_subscription() -> None:
 
 
 def test_decode_message_invalid_event() -> None:
-    """알 수 없는 event 타입 시 ValueError."""
+    """알 수 없는 event 타입 시 ValueError (event, req_id, raw_preview 포함)."""
     raw = '{"event":"UNKNOWN","req_id":"r1"}'
-    with pytest.raises(ValueError, match="Unknown event"):
+    with pytest.raises(ValueError) as exc_info:
         decode_message(raw)
+    err = str(exc_info.value)
+    assert "Unknown event" in err
+    assert "event=UNKNOWN" in err
+    assert "req_id=r1" in err
+    assert "raw_preview" in err
+
+
+def test_decode_message_missing_req_id() -> None:
+    """req_id 누락 시 ValueError (event, keys 포함)."""
+    raw = '{"event":"ACK","code":200}'
+    with pytest.raises(ValueError) as exc_info:
+        decode_message(raw)
+    err = str(exc_info.value)
+    assert "Missing req_id" in err
+    assert "event=ACK" in err
+    assert "keys=" in err
+
+
+def test_decode_message_missing_code() -> None:
+    """ACK에서 code 누락 시 ValueError (req_id 포함)."""
+    raw = '{"event":"ACK","req_id":"r1"}'
+    with pytest.raises(ValueError) as exc_info:
+        decode_message(raw)
+    err = str(exc_info.value)
+    assert "Missing code" in err
+    assert "req_id=r1" in err
+
+
+def test_decode_message_missing_topic() -> None:
+    """SUBSCRIPTION에서 topic 누락 시 ValueError (req_id 포함)."""
+    raw = '{"event":"SUBSCRIPTION","req_id":"r1","payload":{}}'
+    with pytest.raises(ValueError) as exc_info:
+        decode_message(raw)
+    err = str(exc_info.value)
+    assert "Missing topic" in err
+    assert "req_id=r1" in err
+
+
+def test_decode_message_parse_failure() -> None:
+    """직렬화 파싱 실패 시 ValueError (raw_preview 포함)."""
+    raw = '{"event":"ACK","req_id":"r1",invalid json'
+    with pytest.raises(ValueError) as exc_info:
+        decode_message(raw)
+    err = str(exc_info.value)
+    assert "직렬화 파싱 실패" in err or "raw_preview" in err
+
+
+def test_encode_request_binary() -> None:
+    """MessagePack 바이너리 직렬화 (msgpack 설치 시)."""
+    pytest.importorskip("msgpack")
+    req = build_request(Action.PUBLISH, "topic/1", b"binary_data")
+    data = encode_request_binary(req)
+    assert isinstance(data, bytes)
+    import msgpack
+    obj = msgpack.unpackb(data, raw=False)
+    assert obj["action"] == "PUBLISH"
+    assert obj["topic"] == "topic/1"
+    assert obj["payload"] == b"binary_data"
+
+
+def test_decode_message_msgpack() -> None:
+    """MessagePack 바이너리 파싱 (msgpack 설치 시)."""
+    pytest.importorskip("msgpack")
+    import msgpack
+
+    data = {
+        "event": "SUBSCRIPTION",
+        "req_id": "r1",
+        "topic": "t",
+        "payload": {"ok": True},
+    }
+    raw = msgpack.packb(data)
+    msg = decode_message(raw)
+    assert msg.event == "SUBSCRIPTION"
+    assert msg.req_id == "r1"
+    assert msg.topic == "t"
+    assert msg.payload == {"ok": True}

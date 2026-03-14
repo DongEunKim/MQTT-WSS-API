@@ -38,6 +38,14 @@ pip install -r requirements.txt
 
 `SDK/examples/README.md` 를 참고하세요.
 
+### 주요 기능 (SDK)
+
+- **WssMqttClient** (기본, 동기): 콜백 subscribe, `run_forever()`
+- **WssMqttClientAsync** (고급, 비동기): async/await, 배치·다중 구독
+- **transport**: wss-mqtt-api(기본), mqtt(네이티브 MQTT TCP/WebSocket)
+- **MessagePack**: payload bytes 시 직렬화, 수신 자동 파싱
+- **자동 재연결**: exponential backoff, 구독 복구 (비동기)
+
 ## 진행 예정 작업
 
 추가 예정 기능 및 개선 사항은 [TODO.md](TODO.md) 를 참고하세요.

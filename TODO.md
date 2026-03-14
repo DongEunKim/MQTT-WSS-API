@@ -48,12 +48,13 @@
 - [x] **1.6 구독 미소비 가이드**: SubscriptionStream docstring 보강
 - [x] **1.6 구조화 로깅**: README에 structlog 연동 안내
 
-### 1.7 API 사용성 단순화
+### 1.7 API 사용성 단순화 ✅
 > 상세 계획: `docs/TODO_1.7_API_SIMPLIFICATION_PLAN.md`
 > call(), receive_one()은 TGU RPC SDK(2.2)로 이관.
-- [ ] **WssMqttClientSync**: sync 래퍼 (connect/disconnect/publish)
-- [ ] **콜백 기반 subscribe**: `subscribe(topic, callback=fn)` + `run_forever()`
-- [ ] **예제·문서 단순화**: quick start sync 예제로 업데이트
+- [x] **WssMqttClient** (기본, 동기): sync 래퍼 (connect/disconnect/publish)
+- [x] **WssMqttClientAsync** (고급, 비동기): async API
+- [x] **콜백 기반 subscribe**: `subscribe(topic, callback=fn)` + `run_forever()`
+- [x] **예제·문서 단순화**: publisher, subscriber (기본), *_async (고급)
 
 ---
 
@@ -110,5 +111,6 @@
 - [x] **재연결 정책**: auto_reconnect, exponential backoff, auto_resubscribe
 - [x] **프로토콜·파싱 개선**: unknown event, req_id 누락, 직렬화 실패 시 상세 로깅 (raw_preview 등)
 - [x] **입력 검증·유틸리티**: 토픽 검증, publish_many, subscribe_many, docstring 보강, structlog 안내
+- [x] **API 사용성 단순화**: WssMqttClient(기본), WssMqttClientAsync(고급), 콜백 subscribe, 예제 정리
 - [x] 발행/구독 예제 및 실행 가이드
 - [x] 가상환경, requirements.txt, 프로젝트 루트 README

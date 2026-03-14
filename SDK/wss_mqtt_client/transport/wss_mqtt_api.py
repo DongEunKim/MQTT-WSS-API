@@ -1,5 +1,7 @@
 """
-전송 계층 - WebSocket Secure 연결 및 메시지 송수신.
+WSS-MQTT API 전송 계층.
+
+wss-mqtt-api 게이트웨이와 WebSocket으로 통신한다.
 """
 
 import logging
@@ -9,8 +11,8 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 import websockets
 from websockets.asyncio.client import ClientConnection
 
-from .exceptions import WssConnectionError
-from .protocol import decode_message
+from ..exceptions import WssConnectionError
+from ..protocol import decode_message
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +41,9 @@ def _build_headers(token: Optional[str] = None) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-class Transport:
+class WssMqttApiTransport:
     """
-    WebSocket 클라이언트 전송 계층.
+    wss-mqtt-api 게이트웨이용 WebSocket 전송 계층.
 
     연결 수립, 메시지 송수신, 수신 메시지 콜백 분배를 담당한다.
     """
@@ -52,6 +54,8 @@ class Transport:
         token: Optional[str] = None,
         *,
         use_query_token: bool = False,
+        ping_interval: float = 30.0,
+        ping_timeout: float = 10.0,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """
@@ -59,15 +63,24 @@ class Transport:
             url: wss://[API_DOMAIN]/v1/messaging
             token: JWT 또는 API 키
             use_query_token: True면 토큰을 쿼리 파라미터로 전달 (헤더 대신)
+            ping_interval: Ping 전송 간격(초). 0이면 비활성화
+            ping_timeout: Pong 미수신 시 연결 종료 간격(초)
             logger: 로거 인스턴스
         """
         self._url = _build_ws_url(url, token) if use_query_token else url
         self._token = token if not use_query_token else None
         self._use_query_token = use_query_token
+        self._ping_interval = ping_interval
+        self._ping_timeout = ping_timeout
         self._log = logger if logger is not None else logging.getLogger(__name__)
         self._ws: Optional[ClientConnection] = None
         self._receive_callback: Optional[Callable[[Any], None]] = None
+        self._on_connection_lost: Optional[Callable[[], None]] = None
         self._closed = False
+
+    def set_on_connection_lost(self, callback: Optional[Callable[[], None]]) -> None:
+        """연결 끊김 시 호출될 콜백 등록."""
+        self._on_connection_lost = callback
 
     async def connect(self) -> None:
         """WebSocket 연결 수립."""
@@ -76,8 +89,8 @@ class Transport:
             self._ws = await websockets.connect(
                 self._url,
                 additional_headers=headers,
-                ping_interval=30,
-                ping_timeout=10,
+                ping_interval=self._ping_interval,
+                ping_timeout=self._ping_timeout,
                 close_timeout=5,
             )
             self._closed = False
@@ -126,6 +139,11 @@ class Transport:
         except websockets.exceptions.ConnectionClosed as e:
             if not self._closed:
                 self._log.debug("WebSocket 연결 종료: %s", e)
+                if self._on_connection_lost:
+                    try:
+                        self._on_connection_lost()
+                    except Exception:  # noqa: BLE001
+                        self._log.exception("on_connection_lost 콜백 오류")
 
     @property
     def is_connected(self) -> bool:

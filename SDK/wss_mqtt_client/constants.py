@@ -7,6 +7,12 @@ WSS-MQTT API 상수 정의.
 # 타임아웃 (초)
 # 사양 8.1: ACK 수신 대기 시간
 ACK_TIMEOUT_DEFAULT = 5.0
+
+# 구독 큐 최대 크기 (무한 증가 방지, None이면 제한 없음)
+SUBSCRIPTION_QUEUE_MAXSIZE_DEFAULT = 10_000
+
+# 연결 끊김 sentinel (구독 스트림 queue에 투입하여 대기 중인 consumer에 알림)
+CONNECTION_CLOSED_SENTINEL = object()
 # 사양 8.2: RPC 응답 대기 시간 (제어 명령 → 응답 토픽 구독)
 RPC_RESPONSE_TIMEOUT_DEFAULT = 30.0
 

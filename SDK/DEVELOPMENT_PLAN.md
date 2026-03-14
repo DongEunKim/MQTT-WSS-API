@@ -17,24 +17,24 @@
 
 ```python
 # 목표: 개발자가 아래처럼 간단히 사용
+# 기본(동기): WssMqttClient
 from wss_mqtt_client import WssMqttClient
 
-client = WssMqttClient(
-    url="wss://api.example.com/v1/messaging",
-    token="jwt_token_or_api_key"
-)
-await client.connect()
+with WssMqttClient(url="wss://...", token="jwt") as client:
+    client.publish("tgu/device_001/command", {"action": "start"})
 
-# TGU에 제어 명령 발행
-await client.publish("tgu/device_001/command", {"action": "start"})
+# 고급(비동기): WssMqttClientAsync
+from wss_mqtt_client import WssMqttClientAsync
+import asyncio
 
-# 응답 구독 및 수신
-async for msg in client.subscribe("tgu/device_001/response"):
-    print(msg)  # payload 수신
-    break  # 1건 수신 후 종료 (RPC 패턴)
-
-await client.unsubscribe("tgu/device_001/response")
-await client.disconnect()
+async def main():
+    async with WssMqttClientAsync(url="wss://...", token="jwt") as client:
+        await client.publish("tgu/device_001/command", {"action": "start"})
+        async with client.subscribe("tgu/device_001/response") as stream:
+            async for msg in stream:
+                print(msg.payload)
+                break
+asyncio.run(main())
 ```
 
 ---
@@ -84,8 +84,11 @@ SDK/
 ├── DEVELOPMENT_PLAN.md         # 본 문서
 ├── wss_mqtt_client/
 │   ├── __init__.py             # 공개 API
-│   ├── client.py               # WssMqttClient 메인 클래스
-│   ├── transport.py            # WebSocket 연결/전송
+│   ├── client.py               # WssMqttClientAsync (비동기)
+│   ├── client_sync.py          # WssMqttClient (동기 래퍼)
+│   ├── transport/              # 전송 계층 (TransportInterface, WssMqttApiTransport)
+│   │   ├── base.py             # TransportInterface (Protocol)
+│   │   └── wss_mqtt_api.py     # wss-mqtt-api WebSocket 전송
 │   ├── protocol.py             # Envelope 직렬화, req_id, 메시지 파싱
 │   ├── models.py               # Request, ACK, Subscription 데이터 클래스
 │   ├── exceptions.py           # 커스텀 예외 (AckError, TimeoutError 등)
@@ -200,36 +203,39 @@ SDK/
 
 ## 5. API 설계 상세
 
-### 5.1 `WssMqttClient`
+### 5.1 `WssMqttClient` (기본, 동기)
 
 ```python
 class WssMqttClient:
-    def __init__(
-        self,
-        url: str,
-        token: str | None = None,
-        *,
-        ack_timeout: float = 5.0,
-        use_messagepack: bool = False,
-        logger: logging.Logger | None = None,
-    ) -> None: ...
+    """동기 래퍼. 내부적으로 WssMqttClientAsync + asyncio.run 사용."""
+    def __init__(self, url: str, token: str | None = None, ...) -> None: ...
+    def connect(self) -> None: ...
+    def disconnect(self) -> None: ...
+    def publish(self, topic: str, payload: Any) -> None: ...
+    def subscribe(self, topic: str, callback: Callable) -> None: ...
+    def run_forever(self) -> None: ...
+    def run(self, timeout: float | None = None) -> None: ...
+```
 
+### 5.2 `WssMqttClientAsync` (고급, 비동기)
+
+```python
+class WssMqttClientAsync:
     async def connect(self) -> None: ...
     async def disconnect(self) -> None: ...
-    async def __aenter__(self) -> "WssMqttClient": ...
+    async def __aenter__(self) -> "WssMqttClientAsync": ...
     async def __aexit__(self, *args) -> None: ...
-
     async def publish(self, topic: str, payload: Any) -> None: ...
     def subscribe(self, topic: str) -> "SubscriptionStream": ...
     async def unsubscribe(self, topic: str) -> None: ...
 ```
 
-### 5.2 `SubscriptionStream` (구독 스트림)
+### 5.3 `SubscriptionStream` (구독 스트림)
 
 - `async for event in client.subscribe(topic):` 형태
 - `event`: `payload` (및 필요 시 `req_id`, `topic`)를 포함하는 객체
 
-### 5.3 예외 계층
+### 5.4 예외 계층
 
 - `WssMqttError` (기본)
   - `ConnectionError` - 연결 실패/끊김
@@ -268,7 +274,7 @@ class WssMqttClient:
 
 ## 8. 후속 고려 사항
 
-- 동기(Sync) 래퍼: `asyncio.run()` 기반 sync API 제공 여부
+- ~~동기(Sync) 래퍼~~: ✅ WssMqttClient로 제공 완료
 - 재연결 시 구독 자동 복구: 서버 TTL 때문에 재구독 필요 가능성
 - 배치 publish/subscribe: 다수 토픽 일괄 처리용 유틸
 - 구조화 로깅: `structlog` 등 연동

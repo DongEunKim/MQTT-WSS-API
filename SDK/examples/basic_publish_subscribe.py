@@ -1,10 +1,18 @@
 """
-기본 publish/subscribe 예제.
+기본 publish/subscribe 예제 (동기).
+
+연결 → 구독 → 발행 → 수신 흐름. asyncio 없이 동작.
 
 실행 전 URL과 토큰을 환경변수 또는 아래 변수에 설정하세요.
+
+Mock 서버 테스트:
+    WSS_MQTT_URL=ws://localhost:8765 WSS_MQTT_TOKEN= python basic_publish_subscribe.py
+
+환경변수:
+    WSS_MQTT_URL   : API URL
+    WSS_MQTT_TOKEN : JWT 토큰
 """
 
-import asyncio
 import os
 
 from wss_mqtt_client import WssMqttClient
@@ -12,30 +20,39 @@ from wss_mqtt_client import WssMqttClient
 URL = os.environ.get("WSS_MQTT_URL", "wss://api.example.com/v1/messaging")
 TOKEN = os.environ.get("WSS_MQTT_TOKEN", "your_jwt_token")
 
+# 구독 수신용
+RECEIVED: list[dict] = []
 
-async def main() -> None:
-    """연결 → 발행 → 구독 → 수신 흐름 예제."""
-    async with WssMqttClient(url=URL, token=TOKEN) as client:
-        # 1. 토픽 구독 (응답 수신용)
-        print("구독 시작: tgu/device_001/response")
-        async with client.subscribe("tgu/device_001/response") as stream:
-            # 2. 제어 명령 발행
-            await client.publish(
-                "tgu/device_001/command",
-                {"action": "status", "device_id": "001"},
-            )
-            print("발행 완료: tgu/device_001/command")
 
-            # 3. 응답 대기 (최대 30초)
-            try:
-                async for event in stream:
-                    print(f"수신 [topic={event.topic}]: {event.payload}")
-                    break
-            except Exception as e:
-                print(f"수신 실패: {e}")
+def on_message(event):
+    RECEIVED.append(event.payload)
+
+
+def main() -> None:
+    """연결 → 구독 → 발행 → 수신 대기."""
+    print("구독 시작: tgu/device_001/response")
+
+    with WssMqttClient(url=URL, token=TOKEN) as client:
+        client.subscribe("tgu/device_001/response", callback=on_message)
+        client.publish(
+            "tgu/device_001/command",
+            {"action": "status", "device_id": "001"},
+        )
+        print("발행 완료: tgu/device_001/command")
+
+        # 수신 대기 (Mock TGU 시뮬레이션으로 응답 전달)
+        try:
+            client.run(timeout=5.0)
+        except KeyboardInterrupt:
+            pass
+
+    if RECEIVED:
+        print(f"수신 [topic=tgu/device_001/response]: {RECEIVED[0]}")
+    else:
+        print("수신 없음 (타임아웃 또는 Mock 미연결)")
 
     print("연결 종료")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

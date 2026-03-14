@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-발행 클라이언트 예제.
+발행 클라이언트 예제 (기본 - 동기).
 
 test/command 토픽에 메시지를 발행한다.
 Mock 서버의 TGU 시뮬레이션이 활성화되어 있으면,
@@ -16,15 +16,17 @@ Usage:
     # 터미널 3: 발행 클라이언트
     python examples/publisher.py
     python examples/publisher.py --message '{"action":"start"}'
+    python examples/publisher.py --binary  # bytes(MessagePack) 발행
+    python examples/publisher.py -n 5 -i 2  # 5회 발행, 2초 간격
 
 환경변수:
     WSS_URL  : 연결 URL (기본: ws://localhost:8765)
 """
 
 import argparse
-import asyncio
 import json
 import os
+import time
 
 from wss_mqtt_client import WssMqttClient
 
@@ -32,13 +34,19 @@ URL = os.environ.get("WSS_URL", "ws://localhost:8765")
 TOPIC = os.environ.get("PUBLISH_TOPIC", "test/command")
 
 
-async def main() -> None:
+def main() -> None:
     parser = argparse.ArgumentParser(description="발행 클라이언트")
     parser.add_argument(
         "-m",
         "--message",
         default='{"action": "ping", "timestamp": 0}',
         help="발행할 JSON 메시지 (기본: {\"action\": \"ping\"})",
+    )
+    parser.add_argument(
+        "-b",
+        "--binary",
+        action="store_true",
+        help="bytes payload로 MessagePack 직렬화 발행 (msgpack 패키지 필요)",
     )
     parser.add_argument(
         "-n",
@@ -56,30 +64,32 @@ async def main() -> None:
     )
     args = parser.parse_args()
 
-    try:
-        payload = json.loads(args.message)
-    except json.JSONDecodeError as e:
-        print(f"[발행] JSON 파싱 오류: {e}")
-        return
+    if args.binary:
+        payload = args.message.encode("utf-8")
+    else:
+        try:
+            payload = json.loads(args.message)
+        except json.JSONDecodeError as e:
+            print(f"[발행] JSON 파싱 오류: {e}")
+            return
 
     print(f"[발행] 연결 중: {URL}")
     print(f"[발행] 토픽: {TOPIC}")
 
-    async with WssMqttClient(url=URL) as client:
+    with WssMqttClient(url=URL) as client:
         n = 0
         while args.count == 0 or n < args.count:
             n += 1
-            if "timestamp" in payload:
-                import time
-
+            if isinstance(payload, dict) and "timestamp" in payload:
+                payload = dict(payload)
                 payload["timestamp"] = int(time.time() * 1000)
-            await client.publish(TOPIC, payload)
+            client.publish(TOPIC, payload)
             print(f"[발행 #{n}] {payload}")
             if args.count == 0 or n < args.count:
-                await asyncio.sleep(args.interval)
+                time.sleep(args.interval)
 
     print("[발행] 완료")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
