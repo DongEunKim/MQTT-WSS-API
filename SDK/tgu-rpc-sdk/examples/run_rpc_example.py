@@ -10,6 +10,7 @@ Usage:
 """
 
 import asyncio
+import concurrent.futures
 import importlib.util
 import sys
 from pathlib import Path
@@ -28,23 +29,29 @@ from tgu_rpc import TguRpcClient
 
 
 async def main() -> None:
-    """Mock 서버 시작 후 RPC 호출."""
+    """Mock 서버 시작 후 RPC 호출 (동기 클라이언트)."""
     server = MockWssMqttServer(host="localhost", port=0, simulate_tgu=True)
     await server.start()
     url = server.url
     print(f"Mock 서버: {url}")
 
     try:
-        async with TguRpcClient(
-            url=url,
-            vehicle_id="v001",
-            transport="wss-mqtt-api",
-        ) as client:
-            result = await client.call(
-                "RemoteUDS",
-                {"action": "readDTC", "params": {"source": 1}},
-            )
-            print("RPC 결과:", result)
+        def run_sync_rpc() -> None:
+            with TguRpcClient(
+                url=url,
+                vehicle_id="v001",
+                transport="wss-mqtt-api",
+            ) as client:
+                result = client.call(
+                    "RemoteUDS",
+                    {"action": "readDTC", "params": {"source": 1}},
+                )
+                print("RPC 결과:", result)
+
+        # 동기 클라이언트를 별도 스레드에서 실행 (서버 이벤트 루프와 분리)
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as ex:
+            await loop.run_in_executor(ex, run_sync_rpc)
     finally:
         await server.stop()
         print("서버 종료")

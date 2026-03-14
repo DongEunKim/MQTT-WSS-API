@@ -629,26 +629,35 @@ class WssMqttClientAsync:
         self._subscription_handlers.pop(req_id, None)
 
     async def _send_and_wait_ack(self, req: Any) -> None:
-        """요청 전송 후 ACK 대기."""
-        if not self._transport.is_connected:
-            raise WssConnectionError("연결되지 않음")
-        future: asyncio.Future[AckEvent] = (
-            asyncio.get_running_loop().create_future()
-        )
-        self._ack_futures[req.req_id] = future
+        """요청 전송 후 ACK 대기. 연속 연결 시 SUBACK 지연에 대비해 1회 재시도."""
         data = (
             encode_request_binary(req)
             if isinstance(getattr(req, "payload", None), bytes)
             else encode_request(req)
         )
-        await self._transport.send(data)
-        try:
-            ack = await asyncio.wait_for(future, timeout=self._ack_timeout)
-        except asyncio.TimeoutError as e:
-            self._ack_futures.pop(req.req_id, None)
-            raise AckTimeoutError(req.req_id, self._ack_timeout) from e
-        if ack.code != CODE_OK:
-            raise AckError(ack.code, ack.req_id, ack.payload)
+        for attempt in range(2):
+            if not self._transport.is_connected:
+                raise WssConnectionError("연결되지 않음")
+            future: asyncio.Future[AckEvent] = (
+                asyncio.get_running_loop().create_future()
+            )
+            self._ack_futures[req.req_id] = future
+            await self._transport.send(data)
+            try:
+                ack = await asyncio.wait_for(future, timeout=self._ack_timeout)
+            except asyncio.TimeoutError as e:
+                self._ack_futures.pop(req.req_id, None)
+                if attempt < 1:
+                    self._log.debug(
+                        "ACK 타임아웃(req_id=%s), 0.3초 후 재시도",
+                        req.req_id,
+                    )
+                    await asyncio.sleep(0.3)
+                    continue
+                raise AckTimeoutError(req.req_id, self._ack_timeout) from e
+            if ack.code != CODE_OK:
+                raise AckError(ack.code, ack.req_id, ack.payload)
+            return
 
     async def _unsubscribe_and_unregister(
         self, topic: str, req_id: str

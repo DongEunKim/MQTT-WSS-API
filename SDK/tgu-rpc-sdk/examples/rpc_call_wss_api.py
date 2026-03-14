@@ -11,7 +11,6 @@ Mock 서버와 함께 실행:
     WSS_MQTT_TOKEN : JWT 토큰 (선택)
 """
 
-import asyncio
 import os
 
 from tgu_rpc import TguRpcClient
@@ -20,15 +19,15 @@ URL = os.environ.get("WSS_MQTT_URL", "ws://localhost:8765")
 TOKEN = os.environ.get("WSS_MQTT_TOKEN", "")
 
 
-async def main() -> None:
+def main() -> None:
     """RemoteUDS readDTC RPC 호출 예제."""
-    async with TguRpcClient(
+    with TguRpcClient(
         url=URL,
         token=TOKEN or None,
         vehicle_id="v001",
         transport="wss-mqtt-api",
     ) as client:
-        result = await client.call(
+        result = client.call(
             "RemoteUDS",
             {"action": "readDTC", "params": {"source": 1}},
         )
@@ -36,4 +35,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

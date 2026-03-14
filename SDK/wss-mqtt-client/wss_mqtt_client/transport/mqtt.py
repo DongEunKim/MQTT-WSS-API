@@ -90,6 +90,21 @@ class MqttTransport:
         self._topic_to_req_ids: dict[str, set[str]] = {}
         self._disconnected_event = threading.Event()
         self._connected_event = threading.Event()
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+    def _safe_callback(self, msg: Any) -> None:
+        """
+        paho 스레드에서 호출 시, asyncio 이벤트 루프에 안전하게 전달.
+
+        paho-mqtt 콜백은 별도 스레드에서 실행되므로, Future.set_result() 등이
+        메인 루프를 제대로 깨우지 못할 수 있다. call_soon_threadsafe 사용.
+        """
+        if not self._receive_callback:
+            return
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._receive_callback, msg)
+        else:
+            self._receive_callback(msg)
 
     def set_on_connection_lost(
         self, callback: Optional[Callable[[], None]]
@@ -99,6 +114,7 @@ class MqttTransport:
 
     async def connect(self) -> None:
         """MQTT 브로커 연결."""
+        self._loop = asyncio.get_running_loop()
         self._connected_event.clear()
         try:
             await asyncio.to_thread(self._do_connect)
@@ -179,14 +195,14 @@ class MqttTransport:
     ) -> None:
         """PUBACK 수신 (발행 완료)."""
         req_id = self._mid_to_req_id.pop(mid, None)
-        if req_id and self._receive_callback:
+        if req_id:
             ack = AckEvent(
                 event=EVENT_ACK,
                 req_id=req_id,
                 code=CODE_OK,
                 payload=None,
             )
-            self._receive_callback(ack)
+            self._safe_callback(ack)
 
     def _on_subscribe(
         self,
@@ -197,28 +213,28 @@ class MqttTransport:
     ) -> None:
         """SUBACK 수신."""
         req_id = self._mid_to_req_id.pop(mid, None)
-        if req_id and self._receive_callback:
+        if req_id:
             ack = AckEvent(
                 event=EVENT_ACK,
                 req_id=req_id,
                 code=CODE_OK,
                 payload=None,
             )
-            self._receive_callback(ack)
+            self._safe_callback(ack)
 
     def _on_unsubscribe(
         self, _client: Any, _userdata: Any, mid: int
     ) -> None:
         """UNSUBACK 수신."""
         req_id = self._mid_to_req_id.pop(mid, None)
-        if req_id and self._receive_callback:
+        if req_id:
             ack = AckEvent(
                 event=EVENT_ACK,
                 req_id=req_id,
                 code=CODE_OK,
                 payload=None,
             )
-            self._receive_callback(ack)
+            self._safe_callback(ack)
 
     def _on_message(
         self, _client: Any, _userdata: Any, msg: Any
@@ -231,21 +247,20 @@ class MqttTransport:
             payload = msg.payload
 
         req_ids = self._topic_to_req_ids.get(topic, set())
-        if not req_ids and self._receive_callback:
+        if not req_ids:
             self._log.warning(
                 "미등록 토픽의 메시지 수신, 폐기: topic=%s",
                 topic,
             )
             return
         for req_id in req_ids:
-            if self._receive_callback:
-                event = SubscriptionEvent(
-                    event=EVENT_SUBSCRIPTION,
-                    req_id=req_id,
-                    topic=topic,
-                    payload=payload,
-                )
-                self._receive_callback(event)
+            event = SubscriptionEvent(
+                event=EVENT_SUBSCRIPTION,
+                req_id=req_id,
+                topic=topic,
+                payload=payload,
+            )
+            self._safe_callback(event)
 
     def set_receive_callback(self, callback: Callable[[Any], None]) -> None:
         """수신 메시지 콜백 등록."""
@@ -306,59 +321,57 @@ class MqttTransport:
             mid = getattr(result, "mid", None)
             if mid is not None:
                 self._mid_to_req_id[mid] = req_id
-            elif self._receive_callback:
+            else:
                 ack = AckEvent(
                     event=EVENT_ACK,
                     req_id=req_id,
                     code=CODE_OK,
                     payload=None,
                 )
-                self._receive_callback(ack)
+                self._safe_callback(ack)
         elif action == Action.SUBSCRIBE.value:
             already_subscribed = topic in self._topic_to_req_ids
             if topic not in self._topic_to_req_ids:
                 self._topic_to_req_ids[topic] = set()
             self._topic_to_req_ids[topic].add(req_id)
             if already_subscribed:
-                if self._receive_callback:
-                    ack = AckEvent(
-                        event=EVENT_ACK,
-                        req_id=req_id,
-                        code=CODE_OK,
-                        payload=None,
-                    )
-                    self._receive_callback(ack)
-            else:
-                result = self._client.subscribe(topic, qos=1)
-                mid = result[1] if isinstance(result, tuple) else getattr(result, "mid", None)
-                if mid is not None:
-                    self._mid_to_req_id[mid] = req_id
-                elif self._receive_callback:
-                    ack = AckEvent(
-                        event=EVENT_ACK,
-                        req_id=req_id,
-                        code=CODE_OK,
-                        payload=None,
-                    )
-                    self._receive_callback(ack)
-        elif action == Action.UNSUBSCRIBE.value:
-            req_ids = self._topic_to_req_ids.get(topic)
-            if req_ids:
-                req_ids.discard(req_id)
-                if not req_ids:
-                    del self._topic_to_req_ids[topic]
-            result = self._client.unsubscribe(topic)
-            mid = result[1] if isinstance(result, tuple) else getattr(result, "mid", None)
-            if mid is not None:
-                self._mid_to_req_id[mid] = req_id
-            elif self._receive_callback:
                 ack = AckEvent(
                     event=EVENT_ACK,
                     req_id=req_id,
                     code=CODE_OK,
                     payload=None,
                 )
-                self._receive_callback(ack)
+                self._safe_callback(ack)
+            else:
+                result = self._client.subscribe(topic, qos=1)
+                mid = result[1] if isinstance(result, tuple) else getattr(result, "mid", None)
+                if mid is not None:
+                    self._mid_to_req_id[mid] = req_id
+                else:
+                    ack = AckEvent(
+                        event=EVENT_ACK,
+                        req_id=req_id,
+                        code=CODE_OK,
+                        payload=None,
+                    )
+                    self._safe_callback(ack)
+        elif action == Action.UNSUBSCRIBE.value:
+            # MQTT UNSUBSCRIBE는 토픽 전체 해제. envelope의 req_id는 UNSUBACK용.
+            # _topic_to_req_ids에서 해당 토픽을 제거해야 재구독 시 paho subscribe 전송됨.
+            if topic in self._topic_to_req_ids:
+                del self._topic_to_req_ids[topic]
+            result = self._client.unsubscribe(topic)
+            mid = result[1] if isinstance(result, tuple) else getattr(result, "mid", None)
+            if mid is not None:
+                self._mid_to_req_id[mid] = req_id
+            else:
+                ack = AckEvent(
+                    event=EVENT_ACK,
+                    req_id=req_id,
+                    code=CODE_OK,
+                    payload=None,
+                )
+                self._safe_callback(ack)
         else:
             raise ValueError(f"Unknown action: {action}")
 

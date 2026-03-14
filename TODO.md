@@ -79,10 +79,18 @@
   - request_id, response_topic 생성 → WMT 발행 → response_topic 구독 → request_id 매칭 → 응답 반환
   - asyncio.Lock으로 동시 call 직렬화, 타임아웃 처리
 
-### 2.3 구독형 API 및 pub/sub
-- [ ] `subscribe_stream(service, api)` 메서드 구현 (VISSv3 스타일)
-- [ ] 기본 pub/sub 노출 (publish, subscribe 위임, raw_client 노출)
-- [ ] 예제: rpc_call_mqtt, subscribe_stream (rpc_call_wss_api ✅)
+### 2.3 스트리밍 API 및 pub/sub
+> 상세 계획: `docs/TODO_2.3_IMPLEMENTATION_PLAN.md`  
+> 패턴 구분: **call_stream** (1요청→멀티응답) vs **subscribe_stream** (pub/sub 구독)
+
+- [ ] **call_stream**: 1회 요청 → 멀티 응답
+  - **동기 (TguRpcClient)**: `call_stream(..., callback=..., on_complete=...)` 콜백 기반
+  - **비동기 (TguRpcClientAsync)**: `async for chunk in call_stream(...)` iterator
+- [ ] **subscribe_stream**: pub/sub 구독형 (VISSv3 스타일)
+  - **동기**: `subscribe_stream(..., callback=...)` + `run_forever()`
+  - **비동기**: `async with subscribe_stream(...) as stream: async for ...`
+- [ ] 기본 pub/sub 노출 — 동기/비동기 각각 publish, subscribe 위임
+- [ ] 예제: call_stream, subscribe_stream (동기+비동기)
 
 ### 2.4 문서화 및 테스트
 - [x] tgu-rpc-sdk README 및 사용법
@@ -123,3 +131,4 @@
 - [x] 가상환경, requirements.txt, 프로젝트 루트 README
 - [x] **RPC 설계 확정**: MQTT_RPC_METHODOLOGY, RPC_TRANSPORT_LAYER_DESIGN (VISSv2 패턴, response_topic, call(service, payload))
 - [x] **TGU RPC SDK MVP**: topics.py, TguRpcClient, call(), 예제, Mock WMT/WMO 시뮬레이션
+- [x] **RPC 동기식 기본**: TguRpcClient(동기, 기본), TguRpcClientAsync(비동기, 고급). pub/sub와 동일 패턴.

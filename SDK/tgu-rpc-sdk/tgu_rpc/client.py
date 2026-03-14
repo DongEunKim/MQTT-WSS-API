@@ -1,30 +1,43 @@
 """
-TguRpcClient - TGU RPC 클라이언트.
+TguRpcClient - TGU RPC 기본 클라이언트 (동기).
 
-서비스/API 명세 기반 RPC 호출. wss-mqtt-client를 래핑하여
-call(service, payload)로 Request-Response RPC를 수행한다.
+대부분의 사용 사례에 적합. connect/call/disconnect 블로킹 API.
+내부적으로 TguRpcClientAsync와 백그라운드 스레드 이벤트 루프 사용.
+고급 기능(스트리밍 등)은 TguRpcClientAsync를 사용하세요.
 """
 
 import asyncio
-import uuid
+import concurrent.futures
+import threading
 from typing import Any, Optional, Union
 
-from wss_mqtt_client import (
-    SubscriptionTimeoutError,
-    WssMqttClientAsync,
-)
-from wss_mqtt_client.transport import TransportInterface, WssMqttApiTransport
+from wss_mqtt_client.transport import TransportInterface
 
+from .client_async import TguRpcClientAsync
 from .exceptions import RpcError, RpcTimeoutError
-from .topics import build_request_topic, build_response_topic
+
+
+def _run_coro(
+    loop: asyncio.AbstractEventLoop,
+    coro,
+    timeout: Optional[float] = None,
+) -> Any:
+    """동기 컨텍스트에서 코루틴 실행."""
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        future.cancel()
+        raise TimeoutError("작업 시간 초과") from None
 
 
 class TguRpcClient:
     """
-    TGU RPC 클라이언트.
+    TGU RPC 기본 클라이언트 (동기).
 
-    MQTT/WSS를 통해 TGU 서비스에 RPC 호출을 수행한다.
-    내부적으로 WssMqttClientAsync를 사용하며, transport 옵션을 전달한다.
+    connect()/call()/disconnect()는 블로킹 호출.
+    대부분의 사용 사례에 적합. 스트리밍·다중 구독 등 고급 기능은
+    TguRpcClientAsync를 사용하세요.
     """
 
     def __init__(
@@ -48,31 +61,86 @@ class TguRpcClient:
             call_timeout: RPC call 기본 타임아웃(초)
             **kwargs: WssMqttClientAsync 추가 인자 (ack_timeout, auto_reconnect 등)
         """
+        self._url = url
+        self._token = token
         self._vehicle_id = vehicle_id
-        self._client_id = client_id if client_id else uuid.uuid4().hex[:16]
+        self._client_id = client_id
+        self._transport = transport
         self._call_timeout = call_timeout
-        self._call_lock = asyncio.Lock()
+        self._kwargs = kwargs
 
-        self._wss_client = WssMqttClientAsync(
-            url=url,
-            token=token,
-            transport=transport,
-            **kwargs,
-        )
+        self._async_client: Optional[TguRpcClientAsync] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._thread: Optional[threading.Thread] = None
+        self._ready = threading.Event()
 
-    @property
-    def raw_client(self) -> WssMqttClientAsync:
-        """내부 WssMqttClientAsync 인스턴스. 기본 pub/sub 직접 사용 시."""
-        return self._wss_client
+    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
+        """백그라운드 스레드와 이벤트 루프 시작."""
+        if self._loop is not None and self._loop.is_running():
+            return self._loop
 
-    async def __aenter__(self) -> "TguRpcClient":
-        await self._wss_client.connect()
-        return self
+        loop: Optional[asyncio.AbstractEventLoop] = None
 
-    async def __aexit__(self, *args: Any) -> None:
-        await self._wss_client.disconnect()
+        def run_loop() -> None:
+            nonlocal loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self._loop = loop
+            self._ready.set()
+            loop.run_forever()
+            self._loop = None
 
-    async def call(
+        self._thread = threading.Thread(target=run_loop, daemon=True)
+        self._thread.start()
+        self._ready.wait(timeout=5.0)
+        if self._loop is None:
+            raise RuntimeError("이벤트 루프 시작 실패")
+        return self._loop
+
+    def connect(self) -> None:
+        """연결 수립 (블로킹)."""
+        loop = self._ensure_loop()
+
+        async def _connect() -> None:
+            self._async_client = TguRpcClientAsync(
+                url=self._url,
+                token=self._token,
+                vehicle_id=self._vehicle_id,
+                client_id=self._client_id,
+                transport=self._transport,
+                call_timeout=self._call_timeout,
+                **self._kwargs,
+            )
+            await self._async_client._wss_client.connect()
+
+        _run_coro(loop, _connect())
+
+    def disconnect(self) -> None:
+        """연결 종료 (블로킹)."""
+        if self._async_client is None:
+            return
+
+        loop = self._ensure_loop()
+
+        async def _disconnect() -> None:
+            if self._async_client is not None:
+                await self._async_client._wss_client.disconnect()
+                self._async_client = None
+
+        try:
+            _run_coro(loop, _disconnect())
+        except Exception:
+            self._async_client = None
+            raise
+
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            if self._thread is not None:
+                self._thread.join(timeout=5.0)
+            self._loop = None
+            self._thread = None
+
+    def call(
         self,
         service: str,
         payload: dict[str, Any],
@@ -80,7 +148,7 @@ class TguRpcClient:
         timeout: Optional[float] = None,
     ) -> Any:
         """
-        RPC 호출. Request-Response 패턴.
+        RPC 호출. Request-Response 패턴 (블로킹).
 
         Args:
             service: 서비스 식별자 (예: RemoteUDS, VISS)
@@ -94,52 +162,30 @@ class TguRpcClient:
             ValueError: payload에 action이 없는 경우
             RpcError: TGU가 error 필드로 응답한 경우
             RpcTimeoutError: 타임아웃
-            SubscriptionTimeoutError: 구독 대기 타임아웃 (wss_mqtt_client)
+            RuntimeError: 연결되지 않은 경우
         """
-        if "action" not in payload:
-            raise ValueError("payload에 'action' 필드가 필요합니다")
+        if self._async_client is None:
+            raise RuntimeError("연결되지 않음. connect()를 먼저 호출하세요.")
 
-        request_id = uuid.uuid4().hex
-        response_topic = build_response_topic(
-            service, self._vehicle_id, self._client_id
-        )
-        request_topic = build_request_topic(service, self._vehicle_id)
-
-        request_payload = {
-            "action": payload["action"],
-            "params": payload.get("params", {}),
-        }
-        rpc_payload = {
-            "request_id": request_id,
-            "response_topic": response_topic,
-            "request": request_payload,
-        }
-
+        loop = self._ensure_loop()
         used_timeout = timeout if timeout is not None else self._call_timeout
 
-        async def _do_call() -> Any:
-            async with self._call_lock:
-                async with self._wss_client.subscribe(
-                    response_topic, timeout=used_timeout
-                ) as stream:
-                    await self._wss_client.publish(request_topic, rpc_payload)
+        return _run_coro(
+            loop,
+            self._async_client.call(service, payload, timeout=used_timeout),
+            timeout=used_timeout + 5.0,  # 내부 타임아웃보다 여유
+        )
 
-                    async for event in stream:
-                        data = event.payload
-                        if not isinstance(data, dict):
-                            continue
-                        if data.get("request_id") != request_id:
-                            continue
+    @property
+    def raw_client(self):
+        """내부 WssMqttClientAsync 인스턴스. connect() 후에만 사용 가능."""
+        if self._async_client is None:
+            raise RuntimeError("연결되지 않음. connect()를 먼저 호출하세요.")
+        return self._async_client.raw_client
 
-                        if data.get("error"):
-                            raise RpcError(data["error"])
-                        return data.get("result")
+    def __enter__(self) -> "TguRpcClient":
+        self.connect()
+        return self
 
-            raise RuntimeError("unreachable")  # 응답 수신 후 반드시 return/raise
-
-        try:
-            return await _do_call()
-        except SubscriptionTimeoutError as e:
-            raise RpcTimeoutError(
-                service, request_id, used_timeout
-            ) from e
+    def __exit__(self, *args: Any) -> None:
+        self.disconnect()

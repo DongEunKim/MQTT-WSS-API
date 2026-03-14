@@ -111,7 +111,8 @@ wss-mqtt-client/
 tgu-rpc-sdk/
 ├── tgu_rpc/
 │   ├── __init__.py
-│   ├── client.py              # TguRpcClient (WssMqttClient 래핑, transport 전달)
+│   ├── client.py              # TguRpcClient (동기, WssMqttClient 패턴)
+│   ├── client_async.py        # TguRpcClientAsync (비동기, 스트리밍 등)
 │   ├── topics.py              # 토픽 패턴 생성 유틸
 │   └── exceptions.py          # TGU 전용 예외 (선택)
 ├── pyproject.toml             # dependencies: wss-mqtt-client (단일 의존성)
@@ -257,50 +258,56 @@ client = TguRpcClient(
 
 인터페이스는 transport 옵션과 관계없이 동일하다.
 
-### 5.1. RPC 호출 (wss-mqtt-api)
+**기본**: TguRpcClient (동기). **고급**: TguRpcClientAsync (비동기, 스트리밍 등).
+
+### 5.1. RPC 호출 (wss-mqtt-api) — 기본 (동기)
 
 ```python
 from tgu_rpc import TguRpcClient
 
-async with TguRpcClient(
+with TguRpcClient(
     url="wss://api.example.com/v1/messaging",
     token="jwt",
     vehicle_id="vehicle_001",
     transport="wss-mqtt-api",  # 기본값, wss_mqtt_client에 전달
 ) as client:
-    result = await client.call("RemoteUDS", {"action": "readDTC", "params": {"source": 0x01}})
+    result = client.call("RemoteUDS", {"action": "readDTC", "params": {"source": 0x01}})
 ```
 
-### 5.2. RPC 호출 (MQTT over WSS, JWT 인증)
+### 5.2. RPC 호출 (MQTT over WSS, JWT 인증) — 기본 (동기)
 
 ```python
 # transport="mqtt" → wss_mqtt_client가 paho로 MQTT 연결 (URL에 따라 TCP/WSS)
-async with TguRpcClient(
+with TguRpcClient(
     url="wss://mqtt.example.com:443/mqtt",  # 또는 host, port (wss_mqtt_client 사양 따름)
     token="jwt",  # VISS 방식 JWT
     vehicle_id="vehicle_001",
     transport="mqtt",
 ) as client:
-    result = await client.call("RemoteUDS", {"action": "readDTC", "params": {"source": 0x01}})
+    result = client.call("RemoteUDS", {"action": "readDTC", "params": {"source": 0x01}})
 ```
 
-### 5.3. 구독형 API (VISSv3 스타일)
+### 5.3. 구독형 API (VISSv3 스타일) — TguRpcClientAsync
 
 ```python
-# transport 옵션과 무관하게 동일한 인터페이스
-async with client.subscribe_stream("RemoteDashboard", "vehicleSpeed") as stream:
-    async for event in stream:
-        print(event.payload)
+# TguRpcClientAsync 사용. transport 옵션과 무관하게 동일한 인터페이스
+from tgu_rpc import TguRpcClientAsync
+
+async with TguRpcClientAsync(...) as client:
+    async with client.subscribe_stream("RemoteDashboard", "vehicleSpeed") as stream:
+        async for event in stream:
+            print(event.payload)
 ```
 
-### 5.4. 기본 pub/sub (동일 transport 사용)
+### 5.4. 기본 pub/sub (동일 transport 사용) — TguRpcClientAsync
 
 ```python
 # RPC와 동일한 transport. wss_mqtt_client의 publish/subscribe 위임
-await client.publish("custom/topic", payload)
-async with client.subscribe("custom/response") as s:
-    async for event in s:
-        ...
+async with TguRpcClientAsync(...) as client:
+    await client.publish("custom/topic", payload)
+    async with client.subscribe("custom/response") as s:
+        async for event in s:
+            ...
 ```
 
 ### 5.5. wss_mqtt_client 직접 사용 (pub/sub 전용)

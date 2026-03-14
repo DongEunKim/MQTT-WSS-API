@@ -65,13 +65,33 @@ python SDK/wss-mqtt-client/examples/mqtt_subscriber.py   # MQTT 브로커 (docke
 python SDK/wss-mqtt-client/examples/mqtt_publisher.py
 ```
 
-## 5. MQTT 브로커 (Docker)
+## 5. 실제 MQTT 브로커 + TGU 시뮬레이터 (디버깅용)
+
+실제 브로커(Mosquitto)와 TGU 시뮬레이터를 사용하여 RPC를 테스트하고, 토픽 모니터로 모든 메시지를 감시할 수 있다.
 
 ```bash
+# 1. 브로커 실행
 cd SDK && docker compose up -d
 
+# 2. TGU 시뮬레이터 (WMT 요청 수신 → Mock 응답 발행)
+python SDK/examples/tgu_simulator_mqtt.py
+
+# 3. 토픽 모니터 (디버깅용 — 모든 토픽 실시간 출력)
+python SDK/examples/mqtt_topic_monitor.py
+# 또는 WMT/WMO만: python SDK/examples/mqtt_topic_monitor.py --filter "WMT/#" "WMO/#"
+# ※ WMT/WMO 둘 다 보려면 모니터를 먼저 실행하고, "구독 완료" 메시지 출력 후 2~3초 뒤에 RPC 실행
+
+# 4. RPC 호출 (별도 터미널)
+python SDK/tgu-rpc-sdk/examples/rpc_call_mqtt.py
+```
+
+**환경변수**: `MQTT_URL` (기본 `mqtt://localhost:1883`). WebSocket은 `ws://localhost:9001`.
+
+**기본 pub/sub** (같은 브로커):
+
+```bash
 python SDK/wss-mqtt-client/examples/mqtt_subscriber.py   # 터미널 1
-python SDK/wss-mqtt-client/examples/mqtt_publisher.py    # 터미널 2
+python SDK/wss-mqtt-client/examples/mqtt_publisher.py   # 터미널 2
 ```
 
 ## 6. 환경변수
@@ -85,4 +105,4 @@ python SDK/wss-mqtt-client/examples/mqtt_publisher.py    # 터미널 2
 | PUBLISH_TOPIC | test/command | 발행 토픽 |
 | RUN_TIMEOUT | - | subscriber 대기 시간(초) |
 | AUTO_RECONNECT | - | 1 시 자동 재연결 |
-| MQTT_URL | mqtt://localhost:1883 | MQTT 브로커 |
+| MQTT_URL | mqtt://localhost:1883 | MQTT 브로커 (TCP). WebSocket: ws://localhost:9001 |

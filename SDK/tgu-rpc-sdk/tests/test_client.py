@@ -1,11 +1,11 @@
-"""TguRpcClient 단위 테스트 (Mock 기반)."""
+"""TguRpcClientAsync 단위 테스트 (Mock 기반)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 
-from tgu_rpc import TguRpcClient
+from tgu_rpc import TguRpcClientAsync
 from tgu_rpc.exceptions import RpcError, RpcTimeoutError
 
 
@@ -68,10 +68,10 @@ async def test_call_returns_result(mock_wss_client: AsyncMock) -> None:
     mock_wss_client.publish = AsyncMock(side_effect=fake_publish)
 
     with patch(
-        "tgu_rpc.client.WssMqttClientAsync",
+        "tgu_rpc.client_async.WssMqttClientAsync",
         return_value=mock_wss_client,
     ):
-        async with TguRpcClient(
+        async with TguRpcClientAsync(
             url="ws://test",
             vehicle_id="v001",
             client_id="test_client",
@@ -124,10 +124,10 @@ async def test_call_raises_rpc_error_on_error_field(mock_wss_client: AsyncMock) 
     mock_wss_client.publish = AsyncMock(side_effect=fake_publish)
 
     with patch(
-        "tgu_rpc.client.WssMqttClientAsync",
+        "tgu_rpc.client_async.WssMqttClientAsync",
         return_value=mock_wss_client,
     ):
-        async with TguRpcClient(
+        async with TguRpcClientAsync(
             url="ws://test",
             vehicle_id="v001",
             client_id="test_client",
@@ -143,9 +143,9 @@ async def test_call_raises_rpc_error_on_error_field(mock_wss_client: AsyncMock) 
 async def test_call_raises_on_missing_action(mock_wss_client: AsyncMock) -> None:
     """payload에 action 없으면 ValueError."""
     with patch(
-        "tgu_rpc.client.WssMqttClientAsync",
+        "tgu_rpc.client_async.WssMqttClientAsync",
         return_value=mock_wss_client,
     ):
-        async with TguRpcClient(url="ws://test", vehicle_id="v001") as client:
+        async with TguRpcClientAsync(url="ws://test", vehicle_id="v001") as client:
             with pytest.raises(ValueError, match="action"):
                 await client.call("RemoteUDS", {"params": {}})
