@@ -33,4 +33,4 @@ Mock 서버와 클라이언트 예제는 [examples/README.md](examples/README.md
 ## 문서
 
 - [SDK 사용 설명서](../docs/SDK_USER_GUIDE.md) - wss-mqtt-client 상세 사용법
-- [구조 분리 검토](../docs/SDK_RESTRUCTURE_REVIEW.md) - 패키지 구조 설계
+- [문서 목록](../docs/README.md) - 사양·가이드·설계 문서

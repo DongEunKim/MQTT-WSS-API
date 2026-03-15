@@ -124,19 +124,11 @@ async with TguRpcClientAsync(...) as client:
 
 ## 예제 실행
 
+예제 목록·실행 방법: [SDK/examples/README.md](../examples/README.md)
+
 ```bash
-# Mock 서버 자동 시작 + RPC 호출
+# 한 번에 실행 (Mock 서버 자동 시작 + RPC 호출)
 python SDK/tgu-rpc-sdk/examples/run_rpc_example.py
-
-# Mock 서버를 별도 터미널에서 실행한 경우
-# 터미널 1: python SDK/examples/run_mock_server.py
-# 터미널 2: WSS_MQTT_URL=ws://localhost:8765 python SDK/tgu-rpc-sdk/examples/rpc_call_wss_api.py
-
-# call_stream / subscribe_stream 예제
-python SDK/tgu-rpc-sdk/examples/call_stream_example.py
-python SDK/tgu-rpc-sdk/examples/call_stream_example.py --async
-python SDK/tgu-rpc-sdk/examples/subscribe_stream_example.py
-python SDK/tgu-rpc-sdk/examples/subscribe_stream_example.py --async
 ```
 
 ## 토픽 유틸
@@ -161,6 +153,5 @@ stream_topic = build_stream_topic("RemoteDashboard", "v001", "client_A", "vehicl
 
 ## 참조
 
-- `docs/MQTT_RPC_METHODOLOGY.md` — MQTT RPC 방법론
-- `docs/RPC_TRANSPORT_LAYER_DESIGN.md` — 전송 계층 설계
+- `docs/RPC_DESIGN.md` — RPC 방법론 및 전송 계층 설계
 - `docs/TGU_RPC_SDK_DEVELOPMENT_PLAN.md` — 개발 계획

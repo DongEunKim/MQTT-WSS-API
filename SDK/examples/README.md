@@ -43,7 +43,6 @@ python SDK/wss-mqtt-client/examples/publisher.py --binary
 AUTO_RECONNECT=1 python SDK/wss-mqtt-client/examples/subscriber_async.py
 python SDK/wss-mqtt-client/examples/publisher_async.py
 WSS_MQTT_URL=ws://localhost:8765 python SDK/wss-mqtt-client/examples/batch_publish_subscribe.py
-python SDK/wss-mqtt-client/examples/rpc_pattern.py
 ```
 
 ## 3-2. TGU RPC SDK 예제

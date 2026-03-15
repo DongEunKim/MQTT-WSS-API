@@ -61,10 +61,10 @@
 ## 2. TGU RPC SDK 개발 (상위 계층)
 
 > wss_mqtt_client가 준비된 후 진행.  
-> 상세: `docs/TGU_RPC_SDK_DEVELOPMENT_PLAN.md`, `docs/RPC_TRANSPORT_LAYER_DESIGN.md`
+> 상세: `docs/TGU_RPC_SDK_DEVELOPMENT_PLAN.md`, `docs/RPC_DESIGN.md`
 
 ### 2.1 사전 작업: 토픽·Payload 패턴 ✅
-> 상세: `docs/TOPIC_AND_ACL_SPEC.md`, `docs/MQTT_RPC_METHODOLOGY.md`
+> 상세: `docs/TOPIC_AND_ACL_SPEC.md`, `docs/RPC_DESIGN.md`
 - [x] 토픽 패턴: `WMT/{service}/{vehicle_id}/request`, `WMO/{service}/{vehicle_id}/{client_id}/response`
 - [x] RPC Payload: `request_id`, `response_topic`, `request` (VISSv2 스타일)
 - [x] WMT 발행 시 vehicle_id ACL 필터
@@ -133,6 +133,6 @@
 - [x] **API 사용성 단순화**: WssMqttClient(기본), WssMqttClientAsync(고급), 콜백 subscribe, 예제 정리
 - [x] 발행/구독 예제 및 실행 가이드
 - [x] 가상환경, requirements.txt, 프로젝트 루트 README
-- [x] **RPC 설계 확정**: MQTT_RPC_METHODOLOGY, RPC_TRANSPORT_LAYER_DESIGN (VISSv2 패턴, response_topic, call(service, payload))
+- [x] **RPC 설계 확정**: RPC_DESIGN (VISSv2 패턴, response_topic, call(service, payload))
 - [x] **TGU RPC SDK MVP**: topics.py, TguRpcClient, call(), 예제, Mock WMT/WMO 시뮬레이션
 - [x] **RPC 동기식 기본**: TguRpcClient(동기, 기본), TguRpcClientAsync(비동기, 고급). pub/sub와 동일 패턴.

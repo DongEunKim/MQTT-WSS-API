@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 """
-Mock WSS-MQTT API 서버 직접 실행.
+Mock WSS-MQTT API 서버. 로컬 테스트용.
 
 Usage:
-    python examples/run_mock_server.py [--port 8765]
-    python examples/run_mock_server.py --port 9000
-
-옵션:
-    --port PORT  : 포트 번호 (기본 8765)
-    --no-simulate: TGU 시뮬레이션 비활성화 (기본: PUBLISH → /response 토픽으로 자동 릴레이)
-
-실행 후, 다른 터미널에서:
-    python examples/subscriber.py   # 구독 클라이언트
-    python examples/publisher.py   # 발행 클라이언트
+    python SDK/examples/run_mock_server.py [--port 8765]
+옵션: --port PORT, --no-simulate (TGU 시뮬레이션 비활성화)
+클라이언트 예제: SDK/examples/README.md 참고.
 """
 
 import argparse

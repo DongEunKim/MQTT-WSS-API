@@ -34,7 +34,7 @@
 
 - **WMT 요청:** TGU가 응답할 WMO 토픽을 알 수 있도록 **payload에 `response_topic` 포함** (VISSv2 스타일).  
   예: `{"response_topic": "WMO/RemoteUDS/v001/client_A/response", "request": {...}}`  
-  - `response_topic` = `WMO/{service}/{vehicle_id}/{client_id}/response` 형식. 상세: `docs/RPC_TRANSPORT_LAYER_DESIGN.md`
+  - `response_topic` = `WMO/{service}/{vehicle_id}/{client_id}/response` 형식. 상세: `docs/RPC_DESIGN.md`
 - **WMO 구독:** 클라이언트는 `WMO/{service}/{vehicle_id}/{자기_client_id}/response` 토픽으로 구독
 
 ### 2.4 예시

@@ -5,13 +5,11 @@ WebSocket Secure(WSS) 클라이언트와 MQTT 브로커 간 프로토콜 변환 
 ## 프로젝트 구조
 
 ```
-├── docs/                    # 사양서
-│   ├── system_specification_v1.md
-│   └── wss-mqtt-message-schema.json
+├── docs/                    # 사양·가이드 (목록: docs/README.md)
 └── SDK/                     # Python SDK
     ├── wss-mqtt-client/     # WSS-MQTT 클라이언트
-    ├── tgu-rpc-sdk/         # TGU RPC SDK (준비 중)
-    └── examples/            # Mock 서버, 실행 가이드
+    ├── tgu-rpc-sdk/         # TGU RPC SDK
+    └── examples/            # Mock 서버, 예제 실행
 ```
 
 ## 개발 환경 설정
@@ -36,8 +34,9 @@ pip install -r requirements.txt
 
 ## 문서
 
+- [문서 목록](docs/README.md) - 사양·가이드·설계 문서
 - [SDK 사용 설명서](docs/SDK_USER_GUIDE.md) - 설치, 사용법, API 참조
-- [SDK 예제 실행](SDK/examples/README.md) - Mock 서버 및 예제 실행 방법
+- [예제 실행](SDK/examples/README.md) - Mock 서버 및 예제 실행 방법
 
 ### 주요 기능 (SDK)
 

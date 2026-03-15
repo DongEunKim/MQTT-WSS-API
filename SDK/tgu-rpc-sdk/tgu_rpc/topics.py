@@ -2,7 +2,7 @@
 RPC 토픽 패턴 생성 유틸.
 
 WMT/WMO 토픽 규격에 따른 요청/응답 토픽 문자열을 생성한다.
-참조: docs/TOPIC_AND_ACL_SPEC.md, docs/MQTT_RPC_METHODOLOGY.md
+참조: docs/TOPIC_AND_ACL_SPEC.md, docs/RPC_DESIGN.md
 """
 
 

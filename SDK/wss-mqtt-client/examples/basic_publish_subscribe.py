@@ -20,7 +20,6 @@ from wss_mqtt_client import WssMqttClient
 URL = os.environ.get("WSS_MQTT_URL", "wss://api.example.com/v1/messaging")
 TOKEN = os.environ.get("WSS_MQTT_TOKEN", "your_jwt_token")
 
-# 구독 수신용
 RECEIVED: list[dict] = []
 
 
@@ -40,7 +39,6 @@ def main() -> None:
         )
         print("발행 완료: tgu/device_001/command")
 
-        # 수신 대기 (Mock TGU 시뮬레이션으로 응답 전달)
         try:
             client.run(timeout=5.0)
         except KeyboardInterrupt:
