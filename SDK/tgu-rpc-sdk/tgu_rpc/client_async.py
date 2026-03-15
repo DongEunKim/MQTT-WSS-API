@@ -6,7 +6,7 @@ TguRpcClientAsync - TGU RPC 비동기 클라이언트.
 
 import asyncio
 import uuid
-from typing import Any, Optional, Union
+from typing import Any, AsyncIterator, Optional, Union
 
 from wss_mqtt_client import (
     SubscriptionTimeoutError,
@@ -15,7 +15,11 @@ from wss_mqtt_client import (
 from wss_mqtt_client.transport import TransportInterface
 
 from .exceptions import RpcError, RpcTimeoutError
-from .topics import build_request_topic, build_response_topic
+from .topics import (
+    build_request_topic,
+    build_response_topic,
+    build_stream_topic,
+)
 
 
 class TguRpcClientAsync:
@@ -142,3 +146,112 @@ class TguRpcClientAsync:
             raise RpcTimeoutError(
                 service, request_id, used_timeout
             ) from e
+
+    async def call_stream(
+        self,
+        service: str,
+        payload: dict[str, Any],
+        *,
+        timeout: Optional[float] = None,
+    ) -> AsyncIterator[Any]:
+        """
+        1회 요청 → 멀티 응답. async for chunk in client.call_stream(...): 사용.
+
+        Args:
+            service: 서비스 식별자
+            payload: 요청 payload. {"action": str, "params": object?}
+            timeout: 구독 대기 타임아웃(초). None이면 call_timeout 사용
+
+        Yields:
+            각 청크의 result 값. done: true 또는 stream_end: true 수신 시 종료.
+        """
+        if "action" not in payload:
+            raise ValueError("payload에 'action' 필드가 필요합니다")
+
+        request_id = uuid.uuid4().hex
+        response_topic = build_response_topic(
+            service, self._vehicle_id, self._client_id
+        )
+        request_topic = build_request_topic(service, self._vehicle_id)
+        request_payload = {
+            "action": payload["action"],
+            "params": payload.get("params", {}),
+        }
+        rpc_payload = {
+            "request_id": request_id,
+            "response_topic": response_topic,
+            "request": request_payload,
+        }
+        used_timeout = timeout if timeout is not None else self._call_timeout
+
+        async with self._call_lock:
+            async with self._wss_client.subscribe(
+                response_topic, timeout=used_timeout
+            ) as stream:
+                await self._wss_client.publish(request_topic, rpc_payload)
+                async for event in stream:
+                    data = event.payload
+                    if not isinstance(data, dict) or data.get("request_id") != request_id:
+                        continue
+                    if data.get("error"):
+                        raise RpcError(data["error"])
+                    result = data.get("result")
+                    if result is not None:
+                        yield result
+                    if data.get("done") or data.get("stream_end"):
+                        return
+
+    def subscribe_stream(
+        self,
+        service: str,
+        api: str,
+        *,
+        params: Optional[dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+        queue_maxsize: Optional[int] = None,
+    ):
+        """
+        구독형 스트림 (VISSv3 스타일). async with client.subscribe_stream(...) as stream: ...
+
+        Args:
+            service: 서비스 식별자 (예: RemoteDashboard)
+            api: 스트림 API 식별자 (예: vehicleSpeed)
+            params: 선택 파라미터 (TGU 규격 확정 시 RPC 연동용)
+            timeout: 구독 대기 타임아웃
+            queue_maxsize: 구독 큐 최대 크기
+
+        Returns:
+            SubscriptionStream. async with ... as stream: async for event in stream:
+        """
+        _ = params  # RPC action: "subscribe" 연동은 추후
+        stream_topic = build_stream_topic(
+            service, self._vehicle_id, self._client_id, api
+        )
+        return self._wss_client.subscribe(
+            stream_topic, timeout=timeout, queue_maxsize=queue_maxsize
+        )
+
+    async def publish(self, topic: str, payload: Any) -> None:
+        """토픽에 메시지 발행. raw_client.publish 위임."""
+        await self._wss_client.publish(topic, payload)
+
+    def subscribe(
+        self,
+        topic: str,
+        *,
+        timeout: Optional[float] = None,
+        queue_maxsize: Optional[int] = None,
+    ):
+        """
+        토픽 구독. raw_client.subscribe 위임.
+
+        Returns:
+            SubscriptionStream. async with client.subscribe(topic) as stream: async for event in stream:
+        """
+        return self._wss_client.subscribe(
+            topic, timeout=timeout, queue_maxsize=queue_maxsize
+        )
+
+    async def unsubscribe(self, topic: str) -> None:
+        """토픽 구독 해제. raw_client.unsubscribe 위임."""
+        await self._wss_client.unsubscribe(topic)

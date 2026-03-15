@@ -55,6 +55,12 @@ python SDK/tgu-rpc-sdk/examples/run_rpc_example.py
 # Mock 서버 별도 실행 시
 # 터미널 1: python SDK/examples/run_mock_server.py
 # 터미널 2: WSS_MQTT_URL=ws://localhost:8765 python SDK/tgu-rpc-sdk/examples/rpc_call_wss_api.py
+
+# call_stream / subscribe_stream (스트리밍)
+python SDK/tgu-rpc-sdk/examples/call_stream_example.py
+python SDK/tgu-rpc-sdk/examples/call_stream_example.py --async
+python SDK/tgu-rpc-sdk/examples/subscribe_stream_example.py
+python SDK/tgu-rpc-sdk/examples/subscribe_stream_example.py --async
 ```
 
 ## 4. 기타 (wss-mqtt-client)

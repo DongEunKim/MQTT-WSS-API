@@ -277,3 +277,23 @@ def test_sync_multiple_subscriptions(
     assert len(received_b) >= 1
     assert received_a[0] == {"id": "a"}
     assert received_b[0] == {"id": "b"}
+
+
+def test_sync_stop_returns_run_forever(sync_server_url: str) -> None:
+    """stop() 호출 시 run_forever()가 반환한다."""
+    import time
+
+    with WssMqttClient(url=sync_server_url) as client:
+        client.subscribe("dummy", callback=lambda e: None)
+        stop_done = threading.Event()
+
+        def stopper() -> None:
+            time.sleep(0.3)
+            client.stop()
+            stop_done.set()
+
+        threading.Thread(target=stopper, daemon=True).start()
+        client.run_forever()  # stop()으로 반환되어야 함
+        stop_done.wait(timeout=1.0)
+
+    assert stop_done.is_set()

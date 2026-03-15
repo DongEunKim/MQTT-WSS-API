@@ -52,3 +52,28 @@ def build_response_topic(service: str, vehicle_id: str, client_id: str) -> str:
     _validate_segment("vehicle_id", vehicle_id)
     _validate_segment("client_id", client_id)
     return f"WMO/{service}/{vehicle_id}/{client_id}/response"
+
+
+def build_stream_topic(
+    service: str, vehicle_id: str, client_id: str, api: str
+) -> str:
+    """
+    스트림 수신 토픽 생성 (subscribe_stream용).
+
+    Args:
+        service: 서비스 식별자 (예: RemoteDashboard)
+        vehicle_id: 차량 식별자
+        client_id: 클라이언트 식별자
+        api: 스트림 API 식별자 (예: vehicleSpeed, rpm)
+
+    Returns:
+        WMO/{service}/{vehicle_id}/{client_id}/stream/{api} 형식
+
+    Raises:
+        ValueError: 인자가 유효하지 않은 경우
+    """
+    _validate_segment("service", service)
+    _validate_segment("vehicle_id", vehicle_id)
+    _validate_segment("client_id", client_id)
+    _validate_segment("api", api)
+    return f"WMO/{service}/{vehicle_id}/{client_id}/stream/{api}"

@@ -2,7 +2,11 @@
 
 import pytest
 
-from tgu_rpc.topics import build_request_topic, build_response_topic
+from tgu_rpc.topics import (
+    build_request_topic,
+    build_response_topic,
+    build_stream_topic,
+)
 
 
 def test_build_request_topic() -> None:
@@ -45,3 +49,16 @@ def test_build_response_topic_slash_in_client_id() -> None:
     """client_id에 / 포함 거부."""
     with pytest.raises(ValueError, match="/"):
         build_response_topic("RemoteUDS", "v001", "client/A")
+
+
+def test_build_stream_topic() -> None:
+    """스트림 토픽 생성."""
+    assert build_stream_topic(
+        "RemoteDashboard", "v001", "client_A", "vehicleSpeed"
+    ) == "WMO/RemoteDashboard/v001/client_A/stream/vehicleSpeed"
+
+
+def test_build_stream_topic_empty_api() -> None:
+    """빈 api 거부."""
+    with pytest.raises(ValueError, match="api"):
+        build_stream_topic("RemoteDashboard", "v001", "c", "")

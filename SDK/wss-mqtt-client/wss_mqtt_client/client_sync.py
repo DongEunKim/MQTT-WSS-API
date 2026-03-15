@@ -81,6 +81,7 @@ class WssMqttClient:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._ready = threading.Event()
+        self._stop_event = threading.Event()  # run_forever() 블로킹 해제용
         self._subscriptions: list[tuple[str, Callable[[SubscriptionEvent], None], Optional[int]]] = []
         self._drain_tasks: list[asyncio.Task[None]] = []
 
@@ -251,14 +252,18 @@ class WssMqttClient:
         수신 루프 실행 (블로킹). connect() 및 subscribe() 후 호출.
 
         Args:
-            timeout: 대기 시간(초). None이면 무한 대기 (Ctrl+C로 종료)
+            timeout: 대기 시간(초). None이면 무한 대기. stop() 호출 시 즉시 반환.
         """
         self._ensure_client()
-        stop = threading.Event()
+        self._stop_event.clear()
         if timeout is not None:
-            stop.wait(timeout=timeout)
+            self._stop_event.wait(timeout=timeout)
         else:
-            stop.wait()
+            self._stop_event.wait()
+
+    def stop(self) -> None:
+        """run_forever() 블로킹 해제. 다른 스레드 또는 시그널 핸들러에서 호출."""
+        self._stop_event.set()
 
     def run(self, timeout: float = 30.0) -> None:
         """run_forever(timeout) 별칭."""

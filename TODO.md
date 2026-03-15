@@ -83,16 +83,12 @@
 > 상세 계획: `docs/TODO_2.3_IMPLEMENTATION_PLAN.md`  
 > 패턴 구분: **call_stream** (1요청→멀티응답) vs **subscribe_stream** (pub/sub 구독)
 
-- [ ] **stop()**: `run_forever()` 블로킹 해제 — WssMqttClient, TguRpcClient
-  - 다른 스레드/시그널 핸들러에서 `client.stop()` 호출 시 run_forever() 반환
-- [ ] **call_stream**: 1회 요청 → 멀티 응답
-  - **동기 (TguRpcClient)**: `call_stream(..., callback=..., on_complete=...)` 콜백 기반
-  - **비동기 (TguRpcClientAsync)**: `async for chunk in call_stream(...)` iterator
-- [ ] **subscribe_stream**: pub/sub 구독형 (VISSv3 스타일)
-  - **동기**: `subscribe_stream(..., callback=...)` + `run_forever()` (+ `stop()`)
-  - **비동기**: `async with subscribe_stream(...) as stream: async for ...`
-- [ ] 기본 pub/sub 노출 — 동기/비동기 각각 publish, subscribe 위임
-- [ ] 예제: call_stream, subscribe_stream (동기+비동기)
+- [x] **stop()**: `run_forever()` 블로킹 해제 — WssMqttClient, TguRpcClient
+- [x] **call_stream**: 1회 요청 → 멀티 응답 (동기 콜백, 비동기 iterator)
+- [x] **subscribe_stream**: pub/sub 구독형 (동기 callback+run_forever, 비동기 async with stream)
+- [x] **build_stream_topic**, topics 확장
+- [x] 예제: call_stream_example.py, subscribe_stream_example.py (동기+비동기)
+- [x] 기본 pub/sub 노출 — 동기/비동기 각각 publish, subscribe 위임
 
 ### 2.4 Heartbeat (TODO 2.3 완료 후)
 > 종단 간·서비스별 heartbeat. subscribe_stream 등 장기 구독 시 TGU가 클라이언트 끊김 감지.

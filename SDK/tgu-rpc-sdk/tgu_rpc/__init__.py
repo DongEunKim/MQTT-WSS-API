@@ -10,13 +10,18 @@ wss-mqtt-client 위에 구축됨.
 from .client import TguRpcClient
 from .client_async import TguRpcClientAsync
 from .exceptions import RpcError, RpcTimeoutError, TguRpcError
-from .topics import build_request_topic, build_response_topic
+from .topics import (
+    build_request_topic,
+    build_response_topic,
+    build_stream_topic,
+)
 
 __all__ = [
     "TguRpcClient",
     "TguRpcClientAsync",
     "build_request_topic",
     "build_response_topic",
+    "build_stream_topic",
     "TguRpcError",
     "RpcError",
     "RpcTimeoutError",
