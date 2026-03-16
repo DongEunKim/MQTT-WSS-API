@@ -154,4 +154,4 @@ stream_topic = build_stream_topic("RemoteDashboard", "v001", "client_A", "vehicl
 ## 참조
 
 - `docs/RPC_DESIGN.md` — RPC 방법론 및 전송 계층 설계
-- `docs/TGU_RPC_SDK_DEVELOPMENT_PLAN.md` — 개발 계획
+- `docs/RPC_CLIENT_SDK_DEVELOPMENT_PLAN.md` — RPC Client SDK 개발 계획

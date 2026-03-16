@@ -2,7 +2,7 @@
 
 > 프로젝트 루트 기준. 우선순위는 상황에 따라 조정.  
 > **계층 순서**: wss_mqtt_client(기반) → TGU RPC SDK(상위)  
-> 상세 계획: `docs/TGU_RPC_SDK_DEVELOPMENT_PLAN.md`
+> 상세 계획: `docs/RPC_CLIENT_SDK_DEVELOPMENT_PLAN.md` (RPC Client SDK 개발 계획서)
 
 ---
 
@@ -61,7 +61,7 @@
 ## 2. TGU RPC SDK 개발 (상위 계층)
 
 > wss_mqtt_client가 준비된 후 진행.  
-> 상세: `docs/TGU_RPC_SDK_DEVELOPMENT_PLAN.md`, `docs/RPC_DESIGN.md`
+> 상세: `docs/RPC_CLIENT_SDK_DEVELOPMENT_PLAN.md` (RPC Client SDK), `docs/RPC_DESIGN.md`
 
 ### 2.1 사전 작업: 토픽·Payload 패턴 ✅
 > 상세: `docs/TOPIC_AND_ACL_SPEC.md`, `docs/RPC_DESIGN.md`

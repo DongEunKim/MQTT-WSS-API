@@ -487,7 +487,7 @@ sequenceDiagram
 | `wss-mqtt-message-schema.json` | 메시지 Envelope JSON 스키마 |
 | `docs/TOPIC_AND_ACL_SPEC.md` | 토픽 패턴(WMT/WMO) 및 ACL 필터 규칙 |
 | `SDK/README.md` | Python 클라이언트 SDK (wss-mqtt-client) 사용법 |
-| `docs/TGU_RPC_SDK_DEVELOPMENT_PLAN.md` | TGU RPC SDK 및 Transport 추상화 개발 계획 |
+| `docs/RPC_CLIENT_SDK_DEVELOPMENT_PLAN.md` | RPC Client SDK 및 Transport 추상화 개발 계획 |
 
 **클라이언트 SDK:** 본 사양을 준수하는 Python 참조 구현(wss-mqtt-client)은 다음을 지원한다.
 
