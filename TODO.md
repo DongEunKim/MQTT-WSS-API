@@ -1,8 +1,8 @@
 # 진행 예정 작업 (TODO)
 
 > 프로젝트 루트 기준. 우선순위는 상황에 따라 조정.  
-> **계층 순서**: wss_mqtt_client(기반) → TGU RPC SDK(상위)  
-> 상세 계획: `docs/RPC_CLIENT_SDK_DEVELOPMENT_PLAN.md` (RPC Client SDK 개발 계획서)
+> **계층 순서**: wss_mqtt_client(기반) → RPC Client SDK → RPC Server SDK  
+> 상세 계획: `docs/RPC_CLIENT_SDK_DEVELOPMENT_PLAN.md`, `docs/RPC_SERVER_SDK_DEVELOPMENT_PLAN.md`
 
 ---
 
@@ -104,14 +104,190 @@
 
 ---
 
-## 3. 문서·배포
+## 3. RPC Server SDK 개발
+
+> RPC Client SDK(`tgu-rpc-sdk`)의 RPC 호출에 대응하는 **서버 측 서비스를 쉽게 구현**하기 위한 SDK.  
+> 상세 아키텍처: `docs/RPC_SERVER_SDK_DEVELOPMENT_PLAN.md`
+
+### 3.1 프로젝트 셋업
+> 패키지 구조: `SDK/rpc-server-sdk/rpc_server_sdk/`
+
+- [ ] `rpc-server-sdk` 프로젝트 디렉토리 및 `pyproject.toml` 생성
+  - 의존성: `paho-mqtt` (기본), `awsiotsdk` (옵션)
+- [ ] `rpc_server_sdk` 패키지 골격 생성
+  - `__init__.py`, `config.py`, `server.py`, `runtime.py`, `decorators.py`, `models.py`, `exceptions.py`, `utils.py`
+  - `transport/` 서브패키지: `__init__.py`, `base.py`, `mqtt.py`, `aws_iot.py`
+
+### 3.2 설정 관리 (`config.py`)
+> `ServerConfig`: 모든 설정을 담는 단일 객체. 전송 방식·인증·토픽 설정 포함.
+
+- [ ] `ServerConfig` 데이터 클래스 설계
+  - `transport_type`: `"mqtt"` | `"aws_iot"`
+  - MQTT 공통: `mqtt_host`, `mqtt_port`, `use_tls`, `client_id`, `keepalive`
+  - AWS IoT 전용: `aws_iot_endpoint`, `aws_iot_client_id`, `aws_iot_cert_path`, `aws_iot_private_key_path`, `aws_iot_ca_cert_path`
+  - 서비스 공통: `vehicle_id_source`, `qos` (기본 1), `reconnect_backoff_*`
+- [ ] `ServerConfig.from_ini(path: str)` 구현
+  - 섹션: `[server]`, `[mqtt]`, `[aws_iot]`
+  - 미입력 항목은 기본값 적용
+- [ ] `ServerConfig.from_env(prefix: str = "SERVER_")` 구현
+  - 예: `SERVER_TRANSPORT_TYPE`, `SERVER_MQTT_HOST` 등
+- [ ] `ServerConfig.from_ini_and_env(path)` 구현 (INI 로드 후 환경변수로 오버라이드)
+
+### 3.3 Transport 추상화 (`transport/base.py`)
+> 상위 레이어에서 전송 방식(MQTT / AWS IoT)이 은닉되도록 하는 공통 인터페이스.
+
+- [ ] `TransportInterface` (Protocol / ABC) 정의
+  - `async connect()`, `async disconnect()`
+  - `async publish(topic: str, payload: bytes | str, qos: int)`
+  - `async subscribe(topic: str, callback: Callable, qos: int)`
+  - `async unsubscribe(topic: str)`
+  - `on_connect`, `on_disconnect` 콜백 훅
+
+### 3.4 기본 MQTT Transport (`transport/mqtt.py`)
+> paho-mqtt 기반. 순수 MQTT 브로커 직접 연결. 모바일/불안정 환경을 고려한 재연결 정책 포함.
+
+- [ ] `MqttTransport(TransportInterface)` 구현
+  - `ServerConfig` 의 MQTT 필드를 읽어 paho-mqtt 클라이언트 초기화
+  - TLS 설정 지원 (`use_tls`, 인증서 경로 등)
+  - JWT 인증 (MQTT username/password 방식)
+- [ ] QoS 1 기본, keepalive, 재연결 정책 구현
+  - exponential backoff 재연결 (`reconnect_backoff_min`, `reconnect_backoff_max`)
+  - 재연결 시 구독 자동 복구 (auto-resubscribe)
+- [ ] asyncio 루프 통합 (`loop_start` / callback → asyncio.Queue 브릿지)
+
+### 3.5 AWS IoT Transport (`transport/aws_iot.py`)
+> AWS IoT Device SDK(v2) 기반. `mqtt_connection_builder` 로 연결 생성. AWS 자격증명/환경변수 사전 설정 전제.
+
+- [ ] `AwsIotTransport(TransportInterface)` 구현
+  - `mqtt_connection_builder.mtls_from_path(...)` 로 `mqtt.Connection` 생성
+  - `ServerConfig` 의 `aws_iot_*` 필드 또는 AWS 기본 환경설정(AWS_PROFILE 등) 사용
+  - `connection.connect()`, `connection.publish()`, `connection.subscribe()` 래핑
+- [ ] `TransportInterface` 를 완전히 구현하여 `runtime.py` 에서 MQTT와 동일하게 교체 가능하도록 설계
+- [ ] `ServerConfig.transport_type == "aws_iot"` 시 자동 선택
+
+### 3.6 데이터 모델 (`models.py`)
+> RPC 전송 래퍼 스키마(`RPC_DESIGN.md`)와 서버 내부 컨텍스트 모델 정의.
+
+- [ ] `RpcRequestEnvelope` (dataclass)
+  - `request_id: str`, `response_topic: str`, `request: dict`
+- [ ] `RpcResponseEnvelope` (dataclass)
+  - `request_id: str`, `result: Any | None`, `error: dict | None`
+- [ ] `RequestContext` (dataclass)
+  - `service: str`, `action: str`, `params: dict | None`
+  - `vehicle_id: str`, `client_id: str`
+  - `request_id: str`, `response_topic: str`
+  - `received_at: float` (timestamp), `raw_payload: bytes`
+
+### 3.7 예외 타입 (`exceptions.py`)
+> 서버 핸들러에서 발생시키면 SDK가 표준 에러 응답으로 자동 변환.
+
+- [ ] `RpcServerError(code, message)` — 서버 내부 오류 (500)
+- [ ] `RpcBadRequestError(message)` — 요청 형식 오류 (400)
+- [ ] `RpcUnauthorizedError(message)` — 인증/인가 실패 (401/403)
+- [ ] `RpcActionNotFoundError(service, action)` — 액션 없음 (404)
+- [ ] `RpcConcurrencyLimitError(message)` — 동시 세션 초과 (`CONCURRENCY_LIMIT_EXCEEDED`)
+- [ ] 예외 → `{ "code": "...", "message": "..." }` 자동 변환 매핑 테이블
+
+### 3.8 런타임/디스패처 (`runtime.py`)
+> 수신된 MQTT 메시지를 파싱하여 핸들러로 라우팅하고, 응답을 발행하는 SDK 핵심 루프.
+
+- [ ] **요청 수신 루프** 구현
+  - Transport 콜백 → asyncio.Queue → 코루틴 처리
+  - 동시 요청을 비동기로 병렬 처리 (`asyncio.create_task`)
+- [ ] **Envelope 파싱/검증**
+  - JSON / MessagePack 역직렬화
+  - `request_id`, `response_topic`, `request` 필수 필드 검사
+  - 파싱 실패 시 상세 로깅 후 무시 (클라이언트에 에러 응답 불가 케이스)
+- [ ] **`RequestContext` 생성**
+  - 토픽에서 `service`, `vehicle_id` 추출
+  - Envelope에서 `client_id`(response_topic 파싱), `action`, `params` 추출
+- [ ] **디스패치 테이블 관리**
+  - `(service, action)` → 핸들러 코루틴 매핑
+  - `@rpc_service`, `@rpc_action` 데코레이터가 등록한 메타데이터 기반으로 테이블 구성
+  - 존재하지 않는 service/action → `RpcActionNotFoundError` 응답
+- [ ] **응답 Envelope 직렬화 및 발행**
+  - 핸들러 반환값 → `RpcResponseEnvelope(result=...)` 구성
+  - 예외 → `RpcResponseEnvelope(error={"code": ..., "message": ...})` 변환
+  - `transport.publish(response_topic, payload)` 호출
+- [ ] **request_id 캐시 훅** (중복 요청 방지)
+  - 최근 N개 `request_id` 인메모리 캐시 (TTL 기반)
+  - 이미 처리된 요청이면 동일 응답 재전송 또는 무시 (서비스 선택)
+
+### 3.9 데코레이터 (`decorators.py`)
+> 서비스/액션 핸들러 등록 API. 서비스 개발자가 직접 사용하는 공개 인터페이스.
+
+- [ ] `@rpc_service(name: str, max_concurrent_clients: int = 0)` 구현
+  - 클래스에 적용 시 서비스 등록 메타데이터 부여
+  - `max_concurrent_clients > 0` 이면 런타임이 동시 클라이언트 수 추적
+- [ ] `@rpc_action(name: str, sync: bool = False)` 구현
+  - 메서드를 디스패치 테이블에 등록
+  - `sync=True` 이면 스레드풀(`asyncio.to_thread`)로 자동 래핑
+- [ ] 글로벌 레지스트리 구조 설계 (`_SERVICE_REGISTRY`)
+  - `Server` 초기화 시 레지스트리에서 디스패치 테이블 구성
+
+### 3.10 서버 엔트리포인트 (`server.py`)
+> 서비스 개발자가 직접 사용하는 메인 클래스. 내부는 비동기 코어, 외부에는 동기/비동기 양쪽 인터페이스 제공.
+
+- [ ] `ServerAsync` (비동기 코어) 구현
+  - `async start()`, `async stop()`, `async run_forever()`
+  - Transport 선택·초기화, 서비스 등록, 런타임 루프 시작
+  - 서비스별 요청 토픽 구독: `WMT/{service}/{vehicle_id}/request`
+    - 와일드카드(`WMT/+/+/request`) 또는 서비스별 구독 전략 선택
+- [ ] `Server` (동기 래퍼) 구현
+  - 내부 `ServerAsync` + 백그라운드 스레드 이벤트 루프 패턴 (Client SDK와 동일)
+  - `start()`, `stop()`, `run_forever()` — 블로킹 API
+  - `Server.from_ini(path)`, `Server.from_env()` 팩토리 메서드
+- [ ] graceful shutdown 처리
+  - `stop()` 시 진행 중인 핸들러 완료 대기, Transport 연결 종료
+
+### 3.11 단위 테스트
+> Mock Transport를 사용하여 네트워크 없이 검증.
+
+- [ ] `TransportInterface` Mock 구현 (`tests/mock_transport.py`)
+- [ ] `runtime.py` 파싱/디스패치/응답 발행 단위 테스트
+  - 정상 요청 → 핸들러 호출 → 응답 발행 검증
+  - Envelope 파싱 실패 시 로깅·무시 검증
+  - 존재하지 않는 action → `RpcActionNotFoundError` 응답 검증
+  - 핸들러 예외 → 표준 에러 응답 변환 검증
+- [ ] `request_id` 캐시 중복 처리 단위 테스트
+- [ ] `ServerConfig.from_ini()`, `from_env()` 단위 테스트
+
+### 3.12 통합 테스트
+> 실제 MQTT 브로커(또는 Mock)와 RPC Client SDK를 함께 사용하는 종단 간 테스트.
+
+- [ ] Mock MQTT 브로커 또는 인메모리 브릿지 기반 통합 테스트 환경 구성
+- [ ] **RPC call 종단 간 테스트**
+  - `TguRpcClient.call("RemoteUDS", {...})` → Server SDK 핸들러 → 응답 반환 검증
+- [ ] **에러 시나리오 테스트**
+  - 존재하지 않는 action 요청 → `RpcActionNotFoundError` 응답
+  - 핸들러 내부 예외 → `RpcServerError` 응답
+  - 타임아웃 (핸들러 지연) 시나리오
+- [ ] **재연결 시나리오 테스트**
+  - 브로커 연결 끊김 → 재연결 후 구독 복구 검증
+- [ ] **request_id 중복 처리 테스트**
+  - 동일 `request_id` 재전송 → 캐시 히트, 동일 응답 재발행 검증
+
+### 3.13 예제 및 문서화
+> 서비스 개발자를 위한 빠른 시작 가이드와 참조 예제.
+
+- [ ] `examples/remote_uds_server.py` — MQTT transport, call 처리 예제
+- [ ] `examples/remote_uds_server_aws.py` — AWS IoT transport 예제
+- [ ] `examples/remote_dashboard_server.py` — subscribe_stream 서버 측 대응 예제 (pub/sub 발행)
+- [ ] `README.md` 작성 (설치, 설정, 서비스 구현 방법, 예제)
+- [ ] 서비스 개발 가이드 (`docs/RPC_SERVER_SDK_DEVELOPMENT_PLAN.md` 7장 기반)
+  - 단일 클라이언트 전용 서비스 구현 패턴 (RemoteDMS 예시 코드 포함)
+  - Idempotent 핸들러 구현 가이드
+
+---
+
+## 4. 문서·배포
 
 - [ ] **API 문서화**: docstring 보완, Sphinx/Read the Docs 검토
 - [ ] **PyPI 배포**: `wss-mqtt-client` 패키지 공개 (버전 0.2.0 등)
 
 ---
 
-## 4. 인프라
+## 5. 인프라
 
 - [ ] **WSS-MQTT API 게이트웨이 구현**: 현재는 Mock 서버만 존재. 실제 게이트웨이 서버 개발
 
