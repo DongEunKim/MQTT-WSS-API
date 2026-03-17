@@ -29,7 +29,9 @@ def main() -> None:
     with RpcClient(
         url=URL,
         token=TOKEN or None,
-        vehicle_id="v001",
+        thing_name="device_001",
+        oem="acme",
+        asset="VIN123",
         transport="mqtt",
     ) as client:
         result = client.call(

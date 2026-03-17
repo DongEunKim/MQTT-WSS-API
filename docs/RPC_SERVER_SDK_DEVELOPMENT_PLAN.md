@@ -70,7 +70,7 @@ Server SDK의 최종 목표는 다음과 같다.
 │  - TransportInterface (connect / disconnect / subscribe / publish)
 │  - 기본: 순수 MQTT 브로커 연결 (paho-mqtt 등)                    │
 │  - 옵션: AWS IoT Core (AWS IoT Device SDK 기반 MQTT)            │
-│  - subscribe("WMT/{service}/{vehicle_id}/request")             │
+│  - subscribe("WMT/+/{thing_name}/+/+/request")                 │
 │  - publish(response_topic, payload)                             │
 ├─────────────────────────────────────────────────────────────────┤
 │  MQTT Broker / AWS IoT Core MQTT                                │
@@ -82,8 +82,8 @@ Server SDK의 최종 목표는 다음과 같다.
 
 ### 2.2 요청/응답 처리 플로우
 
-1. 서버 SDK가 MQTT 브로커에 연결하고, 서비스별 요청 토픽을 구독한다.
-   - `WMT/{service}/{vehicle_id}/request`
+1. 서버 SDK가 MQTT 브로커에 연결하고, 자신의 `thing_name`을 기준으로 요청 토픽을 구독한다.
+   - `WMT/+/{thing_name}/+/+/request` (service 와일드카드, oem/asset은 접근 제어 계층에서 검증)
 2. MQTT 메시지 수신 시:
    - Payload를 파싱하여 `request_id`, `response_topic`, `request`를 추출한다.
    - `request.action`, `request.params` 정보와 함께 내부 **요청 컨텍스트**를 생성한다.
@@ -171,12 +171,12 @@ maas-rpc-server-sdk/
     - `mqtt_host`, `mqtt_port`, `use_tls`
     - `aws_iot_endpoint`, `aws_iot_client_id`
     - `aws_iot_cert_path`, `aws_iot_private_key_path`, `aws_iot_ca_cert_path`
-    - `vehicle_id_source` (고정 값, JWT 클레임 등)
+    - `thing_name` (엣지 서버의 IoT Thing 이름 — 구독 패턴의 라우팅 키)
     - `service_definitions` (로드할 서비스 모듈 목록)
   - 설정 로딩 편의를 위해 다음과 같은 생성 헬퍼를 제공한다.
     - `ServerConfig.from_ini(path: str)`  
       - INI 형식 파일에서 설정을 로드한다. 섹션/키 예:
-        - `[server] transport_type, vehicle_id_source, ...`
+        - `[server] transport_type, thing_name, ...`
         - `[mqtt] host, port, use_tls, ...`
         - `[aws_iot] endpoint, client_id, cert_path, private_key_path, ca_cert_path, ...`
     - `ServerConfig.from_env(prefix: str = "SERVER_")`  
@@ -224,7 +224,7 @@ maas-rpc-server-sdk/
   - 예:
     - `RpcRequestEnvelope` (request_id, response_topic, request)
     - `RpcResponseEnvelope` (request_id, result, error)
-    - `RequestContext` (vehicle_id, client_id, jwt_claims, raw_message 등)
+    - `RequestContext` (thing_name, oem, asset, client_id, jwt_claims, raw_message 등)
 
 - **`exceptions.py`**
   - 서버 SDK에서 사용하는 표준 예외 타입 정의.
@@ -254,7 +254,7 @@ from maas_rpc_server import Server, rpc_service, rpc_action, RequestContext
 class RemoteUdsService:
     @rpc_action("readDTC")
     async def read_dtc(self, ctx: RequestContext, params: dict) -> dict:
-        # ctx.vehicle_id, ctx.client_id, ctx.jwt_claims 등 사용 가능
+        # ctx.thing_name, ctx.oem, ctx.asset, ctx.client_id, ctx.jwt_claims 등 사용 가능
         result = await self._read_dtc_from_backend(params)
         return {"dtcList": result}
 
@@ -285,7 +285,7 @@ if __name__ == "__main__":
 - **서비스 수준 동시성 정책**
   - 서비스 등록 시 “동시 접속 허용 개수”를 설정할 수 있도록 한다.
     - 예: `@rpc_service("RemoteDMS", max_concurrent_clients=1)`
-  - SDK 런타임은 `client_id`/`vehicle_id` 단위로 현재 활성 세션/요청 수를 추적한다.
+  - SDK 런타임은 `(oem, asset, client_id)` 조합 단위로 현재 활성 세션/요청 수를 추적한다.
 - **단일 클라이언트 강제 전략**
   - 정책 예시:
     - (a) 두 번째 클라이언트 요청을 **즉시 거부** (`error.code = "CONCURRENCY_LIMIT_EXCEEDED"`)
@@ -306,7 +306,7 @@ if __name__ == "__main__":
 - [ ] 서버 SDK의 **최소 지원 대상 서비스/액션 범위** 정리
   - 예: RemoteUDS / RemoteDashboard 우선
 - [ ] 인증/컨텍스트 정보에서 **필수 클레임/필드** 정의
-  - vehicle_id, client_id, 권한 스코프 등
+  - thing_name, oem, asset, client_id, 권한 스코프 등
 - [ ] 서버 측에서 사용할 MQTT 라이브러리(paho-mqtt 등) 및 런타임 제약(Python 버전 등) 확정
 
 ### 5.2 Phase 2 — Transport 추상화 및 기본 MQTT 구현 (`transport/base.py`, `transport/mqtt.py`)
@@ -316,8 +316,9 @@ if __name__ == "__main__":
 - [ ] 기본 MQTT 전송(`MqttTransport`) 구현
   - MQTT 클라이언트 래퍼: connect / disconnect / subscribe / publish
   - QoS, keepalive, 재연결 정책 (모바일/불안정 환경을 고려한 지수 백오프, 재구독 등)
-- [ ] `WMT/{service}/{vehicle_id}/request` 토픽 구독 로직 구현
-  - 와일드카드 구독(`WMT/+/+/request`) + 필터링 또는 서비스별 구독 전략 확정
+- [ ] `WMT/+/{thing_name}/+/+/request` 토픽 구독 로직 구현
+  - `thing_name`은 `ServerConfig`에서 읽어 구독 패턴에 삽입
+  - 수신 메시지에서 `oem`, `asset` 세그먼트를 파싱하여 `RequestContext`에 주입
 - [ ] TLS, 인증서, JWT 관련 설정 훅 제공 (필요 시)
 
 ### 5.3 Phase 3 — AWS IoT 전송 구현 (옵션) (`transport/aws_iot.py`)
@@ -333,7 +334,8 @@ if __name__ == "__main__":
 - [ ] 요청 Envelope 파싱/검증
   - `request_id`, `response_topic`, `request` 필수 필드 검사
 - [ ] `RequestContext` 설계 및 채우기
-  - vehicle_id, client_id, jwt_claims, raw_message 등
+  - thing_name, oem, asset, client_id, jwt_claims, raw_message 등
+  - `oem`, `asset`은 요청 토픽(`WMT/…/{oem}/{asset}/request`)에서 파싱
 - [ ] service/action 기반 디스패치 테이블 구조 정의
   - (service, action) → 핸들러 함수 매핑
 - [ ] 예외 → 표준 에러 응답 변환 로직 구현
@@ -396,11 +398,11 @@ RPC Server SDK를 사용하는 서비스 개발자를 위한 권장 가이드이
 
 - **권장 패턴**
   1. **세션 개념 도입**
-     - 서비스별로 `session_id` 또는 `(vehicle_id, client_id)` 조합을 세션으로 보고 관리한다.
+     - 서비스별로 `session_id` 또는 `(oem, asset, client_id)` 조합을 세션으로 보고 관리한다.
      - 세션 시작/종료를 명시하는 RPC(action)를 설계한다. 예:
        - `openSession`, `closeSession`, `heartbeatSession`
   2. **세션 매니저 구현 (서비스 레벨)**
-     - SDK가 제공하는 `RequestContext`에서 `vehicle_id`, `client_id`를 읽어,
+     - SDK가 제공하는 `RequestContext`에서 `oem`, `asset`, `client_id`를 읽어,
        서비스 내부의 세션 매니저(예: 인메모리 딕셔너리, 외부 KV 스토어)에 기록한다.
      - 이미 활성 세션이 있는 상태에서 또 다른 클라이언트가 `openSession`을 호출하면:
        - `CONCURRENCY_LIMIT_EXCEEDED` 와 같은 표준화된 에러 코드를 사용해 즉시 거부한다.

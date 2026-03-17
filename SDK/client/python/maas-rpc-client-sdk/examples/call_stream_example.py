@@ -25,7 +25,9 @@ def run_sync() -> None:
     with RpcClient(
         url=URL,
         token=TOKEN or None,
-        vehicle_id="v001",
+        thing_name="device_001",
+        oem="acme",
+        asset="VIN123",
         transport="wss-mqtt-api",
     ) as client:
         chunks: list = []
@@ -55,7 +57,9 @@ async def run_async() -> None:
     async with RpcClientAsync(
         url=URL,
         token=TOKEN or None,
-        vehicle_id="v001",
+        thing_name="device_001",
+        oem="acme",
+        asset="VIN123",
         transport="wss-mqtt-api",
     ) as client:
         chunks: list = []

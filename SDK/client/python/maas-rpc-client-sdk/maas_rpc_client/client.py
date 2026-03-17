@@ -3,7 +3,7 @@ RpcClient - MaaS RPC 기본 클라이언트 (동기).
 
 대부분의 사용 사례에 적합. connect/call/disconnect 블로킹 API.
 내부적으로 RpcClientAsync와 백그라운드 스레드 이벤트 루프 사용.
-고급 기능(스트리밍 등)은 RpcClientAsync를 사용하세요.
+고급 기능(call_stream 등)은 RpcClientAsync를 사용하세요.
 """
 
 import asyncio
@@ -15,7 +15,6 @@ from wss_mqtt_client.transport import TransportInterface
 
 from .client_async import RpcClientAsync
 from .exceptions import RpcError, RpcTimeoutError
-from .topics import build_stream_topic
 
 
 def _run_coro(
@@ -37,8 +36,7 @@ class RpcClient:
     MaaS RPC 기본 클라이언트 (동기).
 
     connect()/call()/disconnect()는 블로킹 호출.
-    대부분의 사용 사례에 적합. 스트리밍·다중 구독 등 고급 기능은
-    RpcClientAsync를 사용하세요.
+    대부분의 사용 사례에 적합. call_stream 등 고급 기능은 RpcClientAsync를 사용하세요.
     """
 
     def __init__(
@@ -46,7 +44,9 @@ class RpcClient:
         url: str,
         token: Optional[str] = None,
         *,
-        vehicle_id: str,
+        thing_name: str,
+        oem: str,
+        asset: str,
         client_id: Optional[str] = None,
         transport: Union[str, TransportInterface] = "wss-mqtt-api",
         call_timeout: float = 30.0,
@@ -56,7 +56,9 @@ class RpcClient:
         Args:
             url: wss-mqtt-api URL 또는 MQTT 브로커 URL
             token: JWT 또는 API 키
-            vehicle_id: 차량 식별자
+            thing_name: 엣지 서버의 IoT Thing 이름
+            oem: 엣지 서버의 소속 조직/제조사
+            asset: 장비 식별자 (VIN, 시리얼 번호 등)
             client_id: 클라이언트 식별자. None이면 자동 생성
             transport: "wss-mqtt-api" 또는 "mqtt"
             call_timeout: RPC call 기본 타임아웃(초)
@@ -64,7 +66,9 @@ class RpcClient:
         """
         self._url = url
         self._token = token
-        self._vehicle_id = vehicle_id
+        self._thing_name = thing_name
+        self._oem = oem
+        self._asset = asset
         self._client_id = client_id
         self._transport = transport
         self._call_timeout = call_timeout
@@ -75,7 +79,7 @@ class RpcClient:
         self._thread: Optional[threading.Thread] = None
         self._ready = threading.Event()
         self._stop_event = threading.Event()
-        self._stream_tasks: list[asyncio.Task[None]] = []  # subscribe_stream 드레인
+        self._stream_tasks: list[asyncio.Task[None]] = []
 
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
         """백그라운드 스레드와 이벤트 루프 시작."""
@@ -108,7 +112,9 @@ class RpcClient:
             self._async_client = RpcClientAsync(
                 url=self._url,
                 token=self._token,
-                vehicle_id=self._vehicle_id,
+                thing_name=self._thing_name,
+                oem=self._oem,
+                asset=self._asset,
                 client_id=self._client_id,
                 transport=self._transport,
                 call_timeout=self._call_timeout,
@@ -183,7 +189,7 @@ class RpcClient:
         return _run_coro(
             loop,
             self._async_client.call(service, payload, timeout=used_timeout),
-            timeout=used_timeout + 5.0,  # 내부 타임아웃보다 여유
+            timeout=used_timeout + 5.0,
         )
 
     def call_stream(
@@ -228,7 +234,7 @@ class RpcClient:
         _run_coro(loop, _consume(), timeout=used_timeout + 10.0)
 
     def run_forever(self, timeout: Optional[float] = None) -> None:
-        """수신 루프 (블로킹). subscribe_stream 사용 시. stop()으로 종료 가능."""
+        """수신 루프 (블로킹). subscribe() 사용 시. stop()으로 종료 가능."""
         self._stop_event.clear()
         if timeout is not None:
             self._stop_event.wait(timeout=timeout)
@@ -238,46 +244,6 @@ class RpcClient:
     def stop(self) -> None:
         """run_forever() 블로킹 해제. 다른 스레드 또는 시그널 핸들러에서 호출."""
         self._stop_event.set()
-
-    def subscribe_stream(
-        self,
-        service: str,
-        api: str,
-        callback: Callable[[Any], None],
-        *,
-        params: Optional[dict[str, Any]] = None,
-        queue_maxsize: Optional[int] = None,
-    ) -> None:
-        """
-        구독형 스트림 (VISSv3 스타일). connect() 후 호출. run_forever()로 수신.
-
-        Args:
-            service: 서비스 식별자 (예: RemoteDashboard)
-            api: 스트림 API 식별자 (예: vehicleSpeed)
-            callback: 이벤트 수신 시 호출 (event.payload 등)
-            params: 선택 (서버 규격 확정 시 RPC 연동용)
-            queue_maxsize: 구독 큐 최대 크기
-        """
-        if self._async_client is None:
-            raise RuntimeError("연결되지 않음. connect()를 먼저 호출하세요.")
-        _ = params
-        stream_topic = build_stream_topic(
-            service, self._vehicle_id, self._async_client._client_id, api
-        )
-
-        async def _drain() -> None:
-            async with self._async_client._wss_client.subscribe(
-                stream_topic, queue_maxsize=queue_maxsize
-            ) as stream:
-                async for event in stream:
-                    callback(event)
-
-        async def _register() -> None:
-            task = asyncio.create_task(_drain())
-            self._stream_tasks.append(task)
-
-        loop = self._ensure_loop()
-        asyncio.run_coroutine_threadsafe(_register(), loop).result(timeout=5.0)
 
     def publish(self, topic: str, payload: Any) -> None:
         """토픽에 메시지 발행 (블로킹). RPC와 동일한 연결 사용."""

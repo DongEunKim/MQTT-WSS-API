@@ -73,7 +73,9 @@ async def test_call_returns_result(mock_wss_client: AsyncMock) -> None:
     ):
         async with RpcClientAsync(
             url="ws://test",
-            vehicle_id="v001",
+            thing_name="device_001",
+            oem="acme",
+            asset="VIN123",
             client_id="test_client",
         ) as client:
             client._wss_client = mock_wss_client
@@ -85,11 +87,11 @@ async def test_call_returns_result(mock_wss_client: AsyncMock) -> None:
     assert result == result_data
     assert len(received_publish) == 1
     topic, payload = received_publish[0]
-    assert topic == "WMT/RemoteUDS/v001/request"
+    assert topic == "WMT/RemoteUDS/device_001/acme/VIN123/request"
     assert payload["request"]["action"] == "readDTC"
     assert payload["request"]["params"] == {"source": 1}
     assert "request_id" in payload
-    assert payload["response_topic"] == "WMO/RemoteUDS/v001/test_client/response"
+    assert payload["response_topic"] == "WMO/RemoteUDS/device_001/acme/VIN123/test_client/response"
 
 
 @pytest.mark.asyncio
@@ -129,7 +131,9 @@ async def test_call_raises_rpc_error_on_error_field(mock_wss_client: AsyncMock) 
     ):
         async with RpcClientAsync(
             url="ws://test",
-            vehicle_id="v001",
+            thing_name="device_001",
+            oem="acme",
+            asset="VIN123",
             client_id="test_client",
         ) as client:
             client._wss_client = mock_wss_client
@@ -146,6 +150,8 @@ async def test_call_raises_on_missing_action(mock_wss_client: AsyncMock) -> None
         "maas_rpc_client.client_async.WssMqttClientAsync",
         return_value=mock_wss_client,
     ):
-        async with RpcClientAsync(url="ws://test", vehicle_id="v001") as client:
+        async with RpcClientAsync(
+            url="ws://test", thing_name="device_001", oem="acme", asset="VIN123"
+        ) as client:
             with pytest.raises(ValueError, match="action"):
                 await client.call("RemoteUDS", {"params": {}})

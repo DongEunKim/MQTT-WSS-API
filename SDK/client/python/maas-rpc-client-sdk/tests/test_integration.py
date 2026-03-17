@@ -41,7 +41,9 @@ async def test_rpc_call_integration(mock_server: MockWssMqttServer) -> None:
     def run_sync_client() -> dict:
         with RpcClient(
             url=url,
-            vehicle_id="v001",
+            thing_name="device_001",
+            oem="acme",
+            asset="VIN123",
             client_id="test_integ",
             transport="wss-mqtt-api",
         ) as client:

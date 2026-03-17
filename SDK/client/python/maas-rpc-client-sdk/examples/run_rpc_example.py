@@ -39,7 +39,9 @@ async def main() -> None:
         def run_sync_rpc() -> None:
             with RpcClient(
                 url=url,
-                vehicle_id="v001",
+                thing_name="device_001",
+        oem="acme",
+        asset="VIN123",
                 transport="wss-mqtt-api",
             ) as client:
                 result = client.call(

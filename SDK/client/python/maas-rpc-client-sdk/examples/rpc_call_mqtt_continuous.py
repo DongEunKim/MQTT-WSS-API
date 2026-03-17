@@ -54,7 +54,9 @@ def main_reuse_connection(count: int, verbose: bool) -> None:
     with RpcClient(
         url=URL,
         token=TOKEN or None,
-        vehicle_id="v001",
+        thing_name="device_001",
+        oem="acme",
+        asset="VIN123",
         transport="mqtt",
     ) as client:
         t_connect_elapsed = time.perf_counter() - t_connect
@@ -78,7 +80,9 @@ def main_reconnect_each(count: int, verbose: bool) -> None:
         with RpcClient(
             url=URL,
             token=TOKEN or None,
-            vehicle_id="v001",
+            thing_name="device_001",
+        oem="acme",
+        asset="VIN123",
             transport="mqtt",
         ) as client:
             try:

@@ -14,7 +14,6 @@ from .exceptions import RpcError, RpcTimeoutError
 from .topics import (
     build_request_topic,
     build_response_topic,
-    build_stream_topic,
 )
 
 __all__ = [
@@ -22,7 +21,6 @@ __all__ = [
     "RpcClientAsync",
     "build_request_topic",
     "build_response_topic",
-    "build_stream_topic",
     "RpcError",
     "RpcTimeoutError",
 ]

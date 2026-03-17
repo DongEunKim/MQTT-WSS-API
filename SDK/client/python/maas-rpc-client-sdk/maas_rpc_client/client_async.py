@@ -1,7 +1,7 @@
 """
 RpcClientAsync - MaaS RPC 비동기 클라이언트.
 
-스트리밍·다중 구독 등 고급 기능용. 기본 사용은 RpcClient(동기)를 권장한다.
+고급 기능(call_stream 등)이 필요할 때 사용. 기본 사용은 RpcClient(동기)를 권장한다.
 """
 
 import asyncio
@@ -18,7 +18,6 @@ from .exceptions import RpcError, RpcTimeoutError
 from .topics import (
     build_request_topic,
     build_response_topic,
-    build_stream_topic,
 )
 
 
@@ -28,7 +27,7 @@ class RpcClientAsync:
 
     MQTT/WSS를 통해 엣지 디바이스(Machine) 서비스에 RPC 호출을 수행한다.
     내부적으로 WssMqttClientAsync를 사용한다.
-    고급 기능(스트리밍 등)이 필요할 때 사용. 기본 사용은 RpcClient(동기)를 권장한다.
+    고급 기능(call_stream 등)이 필요할 때 사용. 기본 사용은 RpcClient(동기)를 권장한다.
     """
 
     def __init__(
@@ -36,7 +35,9 @@ class RpcClientAsync:
         url: str,
         token: Optional[str] = None,
         *,
-        vehicle_id: str,
+        thing_name: str,
+        oem: str,
+        asset: str,
         client_id: Optional[str] = None,
         transport: Union[str, TransportInterface] = "wss-mqtt-api",
         call_timeout: float = 30.0,
@@ -46,13 +47,17 @@ class RpcClientAsync:
         Args:
             url: wss-mqtt-api URL 또는 MQTT 브로커 URL
             token: JWT 또는 API 키
-            vehicle_id: 차량 식별자
+            thing_name: 엣지 서버의 IoT Thing 이름
+            oem: 엣지 서버의 소속 조직/제조사
+            asset: 장비 식별자 (VIN, 시리얼 번호 등)
             client_id: 클라이언트 식별자. None이면 자동 생성
             transport: "wss-mqtt-api" 또는 "mqtt"
             call_timeout: RPC call 기본 타임아웃(초)
             **kwargs: WssMqttClientAsync 추가 인자 (ack_timeout, auto_reconnect 등)
         """
-        self._vehicle_id = vehicle_id
+        self._thing_name = thing_name
+        self._oem = oem
+        self._asset = asset
         self._client_id = client_id if client_id else uuid.uuid4().hex[:16]
         self._call_timeout = call_timeout
         self._call_lock = asyncio.Lock()
@@ -104,9 +109,11 @@ class RpcClientAsync:
 
         request_id = uuid.uuid4().hex
         response_topic = build_response_topic(
-            service, self._vehicle_id, self._client_id
+            service, self._thing_name, self._oem, self._asset, self._client_id
         )
-        request_topic = build_request_topic(service, self._vehicle_id)
+        request_topic = build_request_topic(
+            service, self._thing_name, self._oem, self._asset
+        )
 
         request_payload = {
             "action": payload["action"],
@@ -170,9 +177,11 @@ class RpcClientAsync:
 
         request_id = uuid.uuid4().hex
         response_topic = build_response_topic(
-            service, self._vehicle_id, self._client_id
+            service, self._thing_name, self._oem, self._asset, self._client_id
         )
-        request_topic = build_request_topic(service, self._vehicle_id)
+        request_topic = build_request_topic(
+            service, self._thing_name, self._oem, self._asset
+        )
         request_payload = {
             "action": payload["action"],
             "params": payload.get("params", {}),
@@ -200,36 +209,6 @@ class RpcClientAsync:
                         yield result
                     if data.get("done") or data.get("stream_end"):
                         return
-
-    def subscribe_stream(
-        self,
-        service: str,
-        api: str,
-        *,
-        params: Optional[dict[str, Any]] = None,
-        timeout: Optional[float] = None,
-        queue_maxsize: Optional[int] = None,
-    ):
-        """
-        구독형 스트림 (VISSv3 스타일). async with client.subscribe_stream(...) as stream: ...
-
-        Args:
-            service: 서비스 식별자 (예: RemoteDashboard)
-            api: 스트림 API 식별자 (예: vehicleSpeed)
-            params: 선택 파라미터 (서버 규격 확정 시 RPC 연동용)
-            timeout: 구독 대기 타임아웃
-            queue_maxsize: 구독 큐 최대 크기
-
-        Returns:
-            SubscriptionStream. async with ... as stream: async for event in stream:
-        """
-        _ = params  # RPC action: "subscribe" 연동은 추후
-        stream_topic = build_stream_topic(
-            service, self._vehicle_id, self._client_id, api
-        )
-        return self._wss_client.subscribe(
-            stream_topic, timeout=timeout, queue_maxsize=queue_maxsize
-        )
 
     async def publish(self, topic: str, payload: Any) -> None:
         """토픽에 메시지 발행. raw_client.publish 위임."""

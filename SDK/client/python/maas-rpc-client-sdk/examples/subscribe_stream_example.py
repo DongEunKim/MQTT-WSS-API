@@ -1,90 +1,89 @@
 #!/usr/bin/env python3
 """
-subscribe_stream 예제 — 구독형 스트림 (VISSv3 스타일).
+토픽 구독 예제 — 동기 / 비동기 두 가지 사용법.
 
-동기: callback + run_forever() (+ stop()으로 종료)
-비동기: async with subscribe_stream(...) as stream: async for ...
-
-엣지 디바이스/Mock이 WMO/.../stream/{api} 토픽에 발행해야 동작.
+구독할 토픽을 직접 지정하고, 수신 이벤트를 처리한다.
+(구독형 스트림 토픽은 별도 사양으로 확정되지 않았음. 범용 subscribe 예제로 사용.)
 
 Usage:
-    터미널 1: python SDK/examples/run_mock_server.py  # 또는 디바이스 시뮬레이터
+    터미널 1: python SDK/examples/run_mock_server.py
     터미널 2: python SDK/client/python/maas-rpc-client-sdk/examples/subscribe_stream_example.py [--async]
-              동기 모드: 5초 후 stop()으로 종료. 비동기: 5초 수신 후 종료.
+              동기 모드: 5초 후 자동 종료. 비동기: 5초 수신 후 종료.
 """
 
 import argparse
 import asyncio
 import os
 import threading
-import time
 
 from maas_rpc_client import RpcClient, RpcClientAsync
 
 URL = os.environ.get("WSS_MQTT_URL", "ws://localhost:8765")
 TOKEN = os.environ.get("WSS_MQTT_TOKEN", "")
 
+# 구독할 토픽 (환경변수 또는 직접 지정)
+TOPIC = os.environ.get("SUBSCRIBE_TOPIC", "WMO/RemoteDashboard/device_001/acme/VIN123/client_demo/response")
+
 
 def run_sync() -> None:
-    """동기: subscribe_stream(callback) + run_forever(). 5초 후 stop()."""
+    """동기: subscribe(callback) + run_forever(). 5초 후 stop()."""
     client = RpcClient(
         url=URL,
         token=TOKEN or None,
-        vehicle_id="v001",
+        thing_name="device_001",
+        oem="acme",
+        asset="VIN123",
         transport="wss-mqtt-api",
     )
     client.connect()
-    count = [0]
+    received: list = []
 
     def on_event(event) -> None:
-        count[0] += 1
-        print("event:", getattr(event, "payload", event))
+        """수신 이벤트 처리."""
+        received.append(event.payload)
+        print(f"[동기] 수신: {event.payload}")
 
-    client.subscribe_stream("RemoteDashboard", "vehicleSpeed", callback=on_event)
+    client.subscribe(TOPIC, on_event)
 
-    def stop_after() -> None:
-        time.sleep(5.0)
-        print("stop() 호출")
+    def auto_stop() -> None:
+        import time
+        time.sleep(5)
         client.stop()
 
-    threading.Thread(target=stop_after, daemon=True).start()
-    print("run_forever() 시작 (5초 후 stop)")
+    t = threading.Thread(target=auto_stop, daemon=True)
+    t.start()
+
+    print(f"[동기] 구독 시작: {TOPIC} (5초 후 종료)")
     client.run_forever()
     client.disconnect()
-    print("수신 이벤트 수:", count[0])
+    print(f"[동기] 종료. 수신 건수: {len(received)}")
 
 
 async def run_async() -> None:
-    """비동기: async with subscribe_stream(...) as stream: async for ..."""
-    count = [0]
-
+    """비동기: subscribe() async with ... as stream."""
     async with RpcClientAsync(
         url=URL,
         token=TOKEN or None,
-        vehicle_id="v001",
+        thing_name="device_001",
+        oem="acme",
+        asset="VIN123",
         transport="wss-mqtt-api",
     ) as client:
-        async with client.subscribe_stream(
-            "RemoteDashboard", "vehicleSpeed", timeout=5.0
-        ) as stream:
-            async for event in stream:
-                count[0] += 1
-                print("event:", getattr(event, "payload", event))
-                if count[0] >= 10:
-                    break
-
-    print("수신 이벤트 수:", count[0])
+        print(f"[비동기] 구독 시작: {TOPIC} (5초 후 종료)")
+        try:
+            async with client.subscribe(TOPIC, timeout=5.0) as stream:
+                async for event in stream:
+                    print(f"[비동기] 수신: {event.payload}")
+        except Exception as e:
+            print(f"[비동기] 종료: {e}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="subscribe_stream 예제")
-    parser.add_argument(
-        "--async",
-        dest="use_async",
-        action="store_true",
-        help="비동기(iterator) 방식 사용",
-    )
+    """CLI 진입점."""
+    parser = argparse.ArgumentParser(description="토픽 구독 예제")
+    parser.add_argument("--async", dest="use_async", action="store_true", help="비동기 모드")
     args = parser.parse_args()
+
     if args.use_async:
         asyncio.run(run_async())
     else:
