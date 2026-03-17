@@ -8,7 +8,7 @@ WebSocket Secure(WSS) 클라이언트와 MQTT 브로커 간 프로토콜 변환 
 ├── docs/                    # 사양·가이드 (목록: docs/README.md)
 └── SDK/                     # Python SDK
     ├── wss-mqtt-client/     # WSS-MQTT 클라이언트
-    ├── tgu-rpc-sdk/         # TGU RPC SDK
+    ├── maas-rpc-client-sdk/ # MaaS RPC Client SDK
     └── examples/            # Mock 서버, 예제 실행
 ```
 
@@ -24,7 +24,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # SDK 설치 (에디터블 모드)
-pip install -e SDK/wss-mqtt-client
+pip install -e SDK/client/python/wss-mqtt-client
 
 # 또는 requirements.txt 사용 (개발 의존성 포함)
 pip install -r requirements.txt

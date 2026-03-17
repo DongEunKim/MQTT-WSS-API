@@ -63,7 +63,7 @@ wss_mqtt_client의 `WssMqttClient`(동기) 또는 `WssMqttClientAsync`(비동기
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  RPC Client SDK (tgu-rpc-sdk)                                    │
+│  RPC Client SDK (maas-rpc-client-sdk)                                    │
 │  - call(service, payload)             : RPC 호출                   │
 │  - subscribe_stream(service, api)     : 구독형 API                 │
 │  - publish / subscribe                : wss_mqtt_client 위임       │
@@ -106,16 +106,16 @@ wss-mqtt-client/
 └── ...
 ```
 
-**tgu-rpc-sdk (RPC Client SDK)**
+**maas-rpc-client-sdk (RPC Client SDK)**
 
 ```
-tgu-rpc-sdk/
-├── tgu_rpc/
+maas-rpc-client-sdk/
+├── maas_rpc_client/
 │   ├── __init__.py
-│   ├── client.py              # TguRpcClient (동기, WssMqttClient 패턴)
-│   ├── client_async.py        # TguRpcClientAsync (비동기, 스트리밍 등)
+│   ├── client.py              # RpcClient (동기, WssMqttClient 패턴)
+│   ├── client_async.py        # RpcClientAsync (비동기, 스트리밍 등)
 │   ├── topics.py              # 토픽 패턴 생성 유틸
-│   └── exceptions.py          # TGU 전용 예외 (선택)
+│   └── exceptions.py          # RPC 예외
 ├── pyproject.toml             # dependencies: wss-mqtt-client (단일 의존성)
 ├── README.md
 └── examples/
@@ -127,8 +127,8 @@ tgu-rpc-sdk/
 ### 2.5. 초기화 흐름
 
 ```python
-# TguRpcClient
-client = TguRpcClient(
+# RpcClient
+client = RpcClient(
     url="wss://...",  # 또는 host/port (transport에 따라 해석)
     token="jwt",
     vehicle_id="v001",
@@ -141,7 +141,7 @@ client = TguRpcClient(
 
 ### 2.6. 기본 pub/sub 유지
 
-- `TguRpcClient`가 내부 `WssMqttClient`를 노출 (예: `client.raw_client` 또는 `client.wss_client`)
+- `RpcClient`가 내부 `WssMqttClient`를 노출 (예: `client.raw_client` 또는 `client.wss_client`)
 - `publish`, `subscribe`는 `WssMqttClient`에 위임
 - transport 선택은 `WssMqttClient` 생성 시 한 번만 지정, RPC와 pub/sub 모두 동일 transport 사용
 
@@ -188,11 +188,11 @@ client = TguRpcClient(
 | WssMqttClient 수정 | `transport` 파라미터 추가, 선택된 Transport 인스턴스 사용 |
 | 통일 인터페이스 | publish(topic, payload), subscribe(topic) — 두 transport에서 동일 시그니처 |
 
-### 3.2. RPC Client SDK (tgu-rpc-sdk 패키지)
+### 3.2. RPC Client SDK (maas-rpc-client-sdk 패키지)
 
 | 항목 | 설명 |
 |------|------|
-| TguRpcClient 클래스 | url, token, vehicle_id, transport 옵션 — wss_mqtt_client에 전달 |
+| RpcClient 클래스 | url, token, vehicle_id, transport 옵션 — wss_mqtt_client에 전달 |
 | call(service, payload) | Request & Response RPC. payload 규격 `{action, params}`. request_id·response_topic 생성, WMT 발행, response_topic 구독 후 request_id 매칭·응답 수신 |
 | subscribe_stream(service, api) | VISSv3 스타일 구독, 장기 스트림 반환 |
 | 기본 pub/sub | publish, subscribe를 WssMqttClient에 위임, raw_client 노출 |
@@ -229,10 +229,10 @@ client = TguRpcClient(
 
 ### Phase 3: RPC Client SDK — 골격 및 RPC (MVP 우선)
 
-- [x] 프로젝트 셋업 (SDK/tgu-rpc-sdk, pyproject.toml, tgu_rpc 패키지, wss-mqtt-client 의존)
-- [ ] 토픽 생성 유틸 (`topics.py`)
-- [ ] TguRpcClient 구현 — WssMqttClient 생성 시 transport 전달
-- [ ] `call()` 메서드 구현
+- [x] 프로젝트 셋업 (SDK/client/python/maas-rpc-client-sdk, pyproject.toml, maas_rpc_client 패키지, wss-mqtt-client 의존)
+- [x] 토픽 생성 유틸 (`topics.py`)
+- [x] RpcClient 구현 — WssMqttClient 생성 시 transport 전달
+- [x] `call()` 메서드 구현
 
 ### Phase 4: wss_mqtt_client — MQTT over WSS 지원
 
@@ -249,7 +249,7 @@ client = TguRpcClient(
 
 ### Phase 6: 문서화 및 테스트
 
-- [ ] wss-mqtt-client, tgu-rpc-sdk 각 README 및 사용법
+- [x] wss-mqtt-client, maas-rpc-client-sdk 각 README 및 사용법
 - [ ] 단위 테스트 (mock 기반)
 - [ ] 통합 테스트 (실 서버 연동 시 선택)
 
@@ -259,14 +259,14 @@ client = TguRpcClient(
 
 인터페이스는 transport 옵션과 관계없이 동일하다.
 
-**기본**: TguRpcClient (동기). **고급**: TguRpcClientAsync (비동기, 스트리밍 등).
+**기본**: RpcClient (동기). **고급**: RpcClientAsync (비동기, 스트리밍 등).
 
 ### 5.1. RPC 호출 (wss-mqtt-api) — 기본 (동기)
 
 ```python
-from tgu_rpc import TguRpcClient
+from maas_rpc_client import RpcClient
 
-with TguRpcClient(
+with RpcClient(
     url="wss://api.example.com/v1/messaging",
     token="jwt",
     vehicle_id="vehicle_001",
@@ -279,7 +279,7 @@ with TguRpcClient(
 
 ```python
 # transport="mqtt" → wss_mqtt_client가 paho로 MQTT 연결 (URL에 따라 TCP/WSS)
-with TguRpcClient(
+with RpcClient(
     url="wss://mqtt.example.com:443/mqtt",  # 또는 host, port (wss_mqtt_client 사양 따름)
     token="jwt",  # VISS 방식 JWT
     vehicle_id="vehicle_001",
@@ -288,23 +288,23 @@ with TguRpcClient(
     result = client.call("RemoteUDS", {"action": "readDTC", "params": {"source": 0x01}})
 ```
 
-### 5.3. 구독형 API (VISSv3 스타일) — TguRpcClientAsync
+### 5.3. 구독형 API (VISSv3 스타일) — RpcClientAsync
 
 ```python
-# TguRpcClientAsync 사용. transport 옵션과 무관하게 동일한 인터페이스
-from tgu_rpc import TguRpcClientAsync
+# RpcClientAsync 사용. transport 옵션과 무관하게 동일한 인터페이스
+from maas_rpc_client import RpcClientAsync
 
-async with TguRpcClientAsync(...) as client:
+async with RpcClientAsync(...) as client:
     async with client.subscribe_stream("RemoteDashboard", "vehicleSpeed") as stream:
         async for event in stream:
             print(event.payload)
 ```
 
-### 5.4. 기본 pub/sub (동일 transport 사용) — TguRpcClientAsync
+### 5.4. 기본 pub/sub (동일 transport 사용) — RpcClientAsync
 
 ```python
 # RPC와 동일한 transport. wss_mqtt_client의 publish/subscribe 위임
-async with TguRpcClientAsync(...) as client:
+async with RpcClientAsync(...) as client:
     await client.publish("custom/topic", payload)
     async with client.subscribe("custom/response") as s:
         async for event in s:
@@ -334,7 +334,7 @@ async with WssMqttClientAsync(
 
 ### 6.1. 의존성
 
-**tgu-rpc-sdk**
+**maas-rpc-client-sdk**
 
 | 패키지 | 용도 |
 |--------|------|

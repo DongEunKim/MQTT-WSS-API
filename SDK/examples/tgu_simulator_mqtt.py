@@ -10,7 +10,7 @@ Usage:
     # 터미널 1: cd SDK && docker compose up -d
     # 터미널 2: python SDK/examples/tgu_simulator_mqtt.py
     # 터미널 3: python SDK/examples/mqtt_topic_monitor.py  (선택)
-    # 터미널 4: MQTT_URL=mqtt://localhost:1883 python SDK/tgu-rpc-sdk/examples/rpc_call_mqtt.py
+    # 터미널 4: MQTT_URL=mqtt://localhost:1883 python SDK/client/python/maas-rpc-client-sdk/examples/rpc_call_mqtt.py
 
 환경변수:
     MQTT_URL : MQTT 브로커 URL (기본: mqtt://localhost:1883)

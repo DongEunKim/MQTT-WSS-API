@@ -45,7 +45,7 @@ def main() -> None:
     url = f"ws://localhost:{args.port}"
     logger.info("Mock 서버 시작: %s", url)
     logger.info(
-        "연결 후 발행/구독 예제: python SDK/wss-mqtt-client/examples/publisher.py / subscriber.py"
+        "연결 후 발행/구독 예제: python SDK/client/python/wss-mqtt-client/examples/publisher.py / subscriber.py"
     )
     if not args.no_simulate:
         logger.info(

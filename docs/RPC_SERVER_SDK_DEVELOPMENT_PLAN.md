@@ -1,7 +1,7 @@
 # RPC Server SDK 개발 계획서
 
 > **문서 목적**  
-> 이 문서는 현재 프로젝트의 wss_mqtt_client / RPC Client SDK(`tgu-rpc-sdk`) 설계를 기반으로,  
+> 이 문서는 현재 프로젝트의 wss_mqtt_client / RPC Client SDK(`maas-rpc-client-sdk`) 설계를 기반으로,  
 > **MQTT 기반 RPC 서버를 구현하기 위한 RPC Server SDK**(이하 *Server SDK*)의 아키텍처, 모듈 구조, 개발 단계를 정의한다.
 
 ---
@@ -14,8 +14,8 @@
   - **wss_mqtt_client (wss-mqtt-client 패키지)**  
     - wss-mqtt-api 또는 MQTT over WSS 로 MQTT 브로커에 연결하는 전송 SDK.
     - `transport="wss-mqtt-api" | "mqtt"` 옵션으로 전송 방식을 선택한다.
-  - **RPC Client SDK (tgu-rpc-sdk 패키지)**  
-    - `TguRpcClient`, `TguRpcClientAsync` 를 통해 `call()`, `call_stream()`, `subscribe_stream()` 등의 RPC 인터페이스를 제공한다.
+  - **RPC Client SDK (maas-rpc-client-sdk 패키지)**  
+    - `RpcClient`, `RpcClientAsync` 를 통해 `call()`, `call_stream()`, `subscribe_stream()` 등의 RPC 인터페이스를 제공한다.
     - 토픽 패턴(`WMT/.../request`, `WMO/.../response`)과 `request_id`, `response_topic` 기반의 RPC 방법론을 캡슐화한다.
 
 - 클라이언트 SDK는 **클라이언트가 “서비스 명세만 알고 RPC를 쉽게 호출”** 할 수 있도록 추상화되어 있다.
@@ -31,7 +31,7 @@ Server SDK의 최종 목표는 다음과 같다.
 
 - **클라이언트 RPC 인터페이스에 대응하는 서버 측 개발 경험 제공**
   - 클라이언트: `client.call("RemoteUDS", {"action": "readDTC", "params": {...}})`  
-  - 서버: `@tgu_rpc_service("RemoteUDS")` 데코레이터 또는 유사한 구조로 핸들러 구현
+  - 서버: `@rpc_service("RemoteUDS")` 데코레이터 또는 유사한 구조로 핸들러 구현
     - `async def handle_read_dtc(request: RemoteUdsReadDtcRequest) -> RemoteUdsReadDtcResponse: ...`
 
 - **MQTT 토픽, 상관관계(request_id, response_topic), 응답 발행 로직을 SDK가 캡슐화**
@@ -59,7 +59,7 @@ Server SDK의 최종 목표는 다음과 같다.
 ┌─────────────────────────────────────────────────────────────────┐
 │  서비스 레이어 (서버 애플리케이션 서비스 구현 코드)              │
 │  - RemoteUDS, RemoteDashboard, VISSv3 등 도메인 서비스        │
-│  - @tgu_rpc_service, @rpc_action 등으로 구현된 핸들러들        │
+│  - @rpc_service, @rpc_action 등으로 구현된 핸들러들            │
 ├─────────────────────────────────────────────────────────────────┤
 │  Server SDK                                                     │
 │  - 서비스/액션 라우팅, 요청/응답 직렬화                        │
@@ -77,7 +77,7 @@ Server SDK의 최종 목표는 다음과 같다.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-- 클라이언트 측 `wss_mqtt_client` / `tgu-rpc-sdk` 와는 **분리된 서버 측 SDK** 이지만,  
+- 클라이언트 측 `wss_mqtt_client` / `maas-rpc-client-sdk` 와는 **분리된 서버 측 SDK** 이지만,  
   **RPC_DESIGN.md에서 정의한 RPC 전송 래퍼 스키마**를 그대로 따른다.
 
 ### 2.2 요청/응답 처리 플로우
@@ -99,7 +99,7 @@ Server SDK의 최종 목표는 다음과 같다.
 
 ```
 클라이언트 측:
-  애플리케이션 → RPC Client SDK (tgu-rpc-sdk) → wss_mqtt_client → MQTT Broker / AWS IoT Core
+  애플리케이션 → RPC Client SDK (maas-rpc-client-sdk) → wss_mqtt_client → MQTT Broker / AWS IoT Core
 
 서버 측:
   서버 애플리케이션 서비스 구현 → RPC Server SDK → Transport(MQTT / AWS IoT) → MQTT Broker / AWS IoT Core
@@ -115,7 +115,7 @@ Server SDK의 최종 목표는 다음과 같다.
   - 네트워크 품질이 일정하지 않으며, 이동/전원 상태에 따라 **불시에 연결이 끊기거나 시스템이 종료(shutdown)** 될 수 있다.
   - 재부팅 후 동일 서비스가 다시 올라오더라도, 이전 세션 상태는 보존되지 않을 수 있다.
 - **RPC Client SDK와의 비교**
-  - Client SDK(`tgu-rpc-sdk`)는
+  - Client SDK(`maas-rpc-client-sdk`)는
     - `wss_mqtt_client` 의 **auto_reconnect / auto_resubscribe**, 지수 백오프 재시도에 의존하여 연결을 복구하고,
     - `call()` 측에서 **타임아웃 + 재시도** 전략을 취함으로써 서버 측 일시 장애/끊김을 견딘다.
   - Server SDK는
@@ -136,13 +136,13 @@ Server SDK의 최종 목표는 다음과 같다.
 ## 3. 모듈/패키지 구조 설계
 
 > 실제 리포지토리 구조는 이후 확정하되, 여기서는 Python 패키지 기준으로 개념적 구조를 정의한다.  
-> (예: `SDK/server-sdk/server_sdk/` 등)
+> (예: `SDK/maas-rpc-server-sdk/maas_rpc_server/` 등)
 
 ### 3.1 상위 패키지 구조 (예시)
 
 ```text
-server-sdk/
-├── server_sdk/
+maas-rpc-server-sdk/
+├── maas_rpc_server/
 │   ├── __init__.py
 │   ├── config.py          # 설정 로딩, 브로커/토픽/인증/transport 관련
 │   ├── server.py          # 서버 런타임, 메인 엔트리포인트(Server)
@@ -247,7 +247,7 @@ server-sdk/
 ### 4.1 기본 서버 예제 (개념)
 
 ```python
-from rpc_server_sdk import Server, rpc_service, rpc_action, RequestContext
+from maas_rpc_server import Server, rpc_service, rpc_action, RequestContext
 
 
 @rpc_service("RemoteUDS")
@@ -345,7 +345,7 @@ if __name__ == "__main__":
 
 ### 5.5 Phase 5 — 데코레이터 및 서버 엔트리포인트 (`decorators.py`, `server.py`)
 
-- [ ] `@tgu_rpc_service(service_name)` 데코레이터 구현
+- [ ] `@rpc_service(service_name)` 데코레이터 구현
   - (일반화 후 이름: `@rpc_service(service_name)`)
   - 클래스 또는 함수 기반 서비스 정의 지원
 - [ ] `@rpc_action(action_name)` 데코레이터 구현
@@ -356,8 +356,8 @@ if __name__ == "__main__":
 
 ### 5.6 Phase 6 — 통합 테스트 및 예제 강화
 
-- [ ] 클라이언트 SDK(`tgu-rpc-sdk`)와 실제 MQTT 브로커를 통한 **종단 간 테스트**
-  - 클라이언트: `TguRpcClient.call("RemoteUDS", {...})`
+- [ ] 클라이언트 SDK(`maas-rpc-client-sdk`)와 실제 MQTT 브로커를 통한 **종단 간 테스트**
+  - 클라이언트: `RpcClient.call("RemoteUDS", {...})`
   - 서버: Server SDK 예제 서비스
 - [ ] 에러/타임아웃/재연결 시나리오 테스트
 - [ ] RemoteDashboard 등 추가 서비스 예제 작성

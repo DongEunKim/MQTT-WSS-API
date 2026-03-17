@@ -71,9 +71,9 @@
 
 ### 2.2 RPC MVP ✅
 > 상세: `docs/TODO_2.2_RPC_MVP_IMPLEMENTATION_PLAN.md`
-- [x] tgu-rpc-sdk 프로젝트 셋업 (SDK/tgu-rpc-sdk, wss-mqtt-client 의존)
+- [x] maas-rpc-client-sdk 프로젝트 셋업 (SDK/client/python/maas-rpc-client-sdk, wss-mqtt-client 의존)
 - [x] 토픽 생성 유틸 (`topics.py`): `build_request_topic`, `build_response_topic`
-- [x] TguRpcClient 구현: WssMqttClient 래핑, transport 전달, client_id 자동 생성
+- [x] RpcClient 구현: WssMqttClient 래핑, transport 전달, client_id 자동 생성
 - [x] `call(service, payload)` 구현
   - payload 규격: `{ "action": str, "params": object? }`
   - request_id, response_topic 생성 → WMT 발행 → response_topic 구독 → request_id 매칭 → 응답 반환
@@ -83,7 +83,7 @@
 > 상세 계획: `docs/TODO_2.3_IMPLEMENTATION_PLAN.md`  
 > 패턴 구분: **call_stream** (1요청→멀티응답) vs **subscribe_stream** (pub/sub 구독)
 
-- [x] **stop()**: `run_forever()` 블로킹 해제 — WssMqttClient, TguRpcClient
+- [x] **stop()**: `run_forever()` 블로킹 해제 — WssMqttClient, RpcClient
 - [x] **call_stream**: 1회 요청 → 멀티 응답 (동기 콜백, 비동기 iterator)
 - [x] **subscribe_stream**: pub/sub 구독형 (동기 callback+run_forever, 비동기 async with stream)
 - [x] **build_stream_topic**, topics 확장
@@ -91,13 +91,13 @@
 - [x] 기본 pub/sub 노출 — 동기/비동기 각각 publish, subscribe 위임
 
 ### 2.4 Heartbeat (TODO 2.3 완료 후)
-> 종단 간·서비스별 heartbeat. subscribe_stream 등 장기 구독 시 TGU가 클라이언트 끊김 감지.
+> 종단 간·서비스별 heartbeat. subscribe_stream 등 장기 구독 시 엣지 디바이스가 클라이언트 끊김 감지.
 
 - [ ] 스트림 수준 양방향 heartbeat 설계 (토픽, 주기, 타임아웃)
 - [ ] TGU/클라이언트 구현 — TODO 2.3 완료 후 진행
 
 ### 2.5 문서화 및 테스트
-- [x] tgu-rpc-sdk README 및 사용법
+- [x] maas-rpc-client-sdk README 및 사용법
 - [x] 단위 테스트 (mock 기반, call 시나리오)
 - [x] 통합 테스트: RPC 패턴 (Mock 서버 WMT/WMO 시뮬레이션 포함)
 - [ ] ACK 에러(403, 422), 타임아웃 시나리오 (추가)
@@ -106,15 +106,49 @@
 
 ## 3. RPC Server SDK 개발
 
-> RPC Client SDK(`tgu-rpc-sdk`)의 RPC 호출에 대응하는 **서버 측 서비스를 쉽게 구현**하기 위한 SDK.  
+> RPC Client SDK(`maas-rpc-client-sdk`)의 RPC 호출에 대응하는 **서버 측 서비스를 쉽게 구현**하기 위한 SDK.  
 > 상세 아키텍처: `docs/RPC_SERVER_SDK_DEVELOPMENT_PLAN.md`
 
 ### 3.1 프로젝트 셋업
-> 패키지 구조: `SDK/rpc-server-sdk/rpc_server_sdk/`
+> **SDK 디렉토리 구조** (client/server × 언어 분리)
+>
+> ```
+> SDK/
+> ├── client/                          ← Machine 서비스를 호출하는 쪽
+> │   ├── python/
+> │   │   ├── wss-mqtt-client/         # 전송 인프라 (클라이언트 전용)
+> │   │   └── maas-rpc-client-sdk/     # RPC 클라이언트
+> │   ├── csharp/                      # 추후
+> │   └── java/                        # 추후
+> └── server/                          ← Machine 위에서 서비스를 노출하는 쪽
+>     └── python/                      # 우선 Python만
+>         └── maas-rpc-server-sdk/
+>             ├── maas_rpc_server/
+>             │   ├── __init__.py
+>             │   ├── config.py        # 브로커/토픽/인증/transport 설정
+>             │   ├── server.py        # Server 런타임, 엔트리포인트
+>             │   ├── runtime.py       # 디스패처, 요청/응답 파이프라인
+>             │   ├── decorators.py    # @rpc_service, @rpc_action
+>             │   ├── models.py        # Request/Response, RequestContext
+>             │   ├── exceptions.py    # 서버 SDK 예외
+>             │   ├── utils.py         # request_id 생성 등 공용 유틸
+>             │   └── transport/
+>             │       ├── __init__.py
+>             │       ├── base.py      # TransportInterface (추상)
+>             │       ├── mqtt.py      # 순수 MQTT (paho-mqtt)
+>             │       └── aws_iot.py   # AWS IoT Core (옵션)
+>             ├── tests/
+>             ├── examples/
+>             ├── pyproject.toml
+>             └── README.md
+> ```
 
-- [ ] `rpc-server-sdk` 프로젝트 디렉토리 및 `pyproject.toml` 생성
+- [x] `SDK/client/python/`으로 기존 패키지 이동
+  - `SDK/wss-mqtt-client/` → `SDK/client/python/wss-mqtt-client/`
+  - `SDK/maas-rpc-client-sdk/` → `SDK/client/python/maas-rpc-client-sdk/`
+- [ ] `SDK/server/python/maas-rpc-server-sdk/` 디렉토리 및 `pyproject.toml` 생성
   - 의존성: `paho-mqtt` (기본), `awsiotsdk` (옵션)
-- [ ] `rpc_server_sdk` 패키지 골격 생성
+- [ ] `maas_rpc_server` 패키지 골격 생성
   - `__init__.py`, `config.py`, `server.py`, `runtime.py`, `decorators.py`, `models.py`, `exceptions.py`, `utils.py`
   - `transport/` 서브패키지: `__init__.py`, `base.py`, `mqtt.py`, `aws_iot.py`
 
@@ -257,7 +291,7 @@
 
 - [ ] Mock MQTT 브로커 또는 인메모리 브릿지 기반 통합 테스트 환경 구성
 - [ ] **RPC call 종단 간 테스트**
-  - `TguRpcClient.call("RemoteUDS", {...})` → Server SDK 핸들러 → 응답 반환 검증
+  - `RpcClient.call("RemoteUDS", {...})` → Server SDK 핸들러 → 응답 반환 검증
 - [ ] **에러 시나리오 테스트**
   - 존재하지 않는 action 요청 → `RpcActionNotFoundError` 응답
   - 핸들러 내부 예외 → `RpcServerError` 응답
@@ -310,5 +344,5 @@
 - [x] 발행/구독 예제 및 실행 가이드
 - [x] 가상환경, requirements.txt, 프로젝트 루트 README
 - [x] **RPC 설계 확정**: RPC_DESIGN (VISSv2 패턴, response_topic, call(service, payload))
-- [x] **TGU RPC SDK MVP**: topics.py, TguRpcClient, call(), 예제, Mock WMT/WMO 시뮬레이션
-- [x] **RPC 동기식 기본**: TguRpcClient(동기, 기본), TguRpcClientAsync(비동기, 고급). pub/sub와 동일 패턴.
+- [x] **WSS RPC SDK MVP**: topics.py, RpcClient, call(), 예제, Mock WMT/WMO 시뮬레이션
+- [x] **RPC 동기식 기본**: RpcClient(동기, 기본), RpcClientAsync(비동기, 고급). pub/sub와 동일 패턴.

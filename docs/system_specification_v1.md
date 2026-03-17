@@ -498,5 +498,5 @@ sequenceDiagram
 | **재연결** | auto_reconnect, exponential backoff, auto_resubscribe |
 | **연결 끊김 처리** | 구독 스트림에 즉시 WssConnectionError 전달 |
 
-예제 및 사용법: `SDK/README.md`, `SDK/wss-mqtt-client/README.md`, `SDK/examples/README.md`
+예제 및 사용법: `SDK/README.md`, `SDK/client/python/wss-mqtt-client/README.md`, `SDK/examples/README.md`
 

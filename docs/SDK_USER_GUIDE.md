@@ -408,10 +408,10 @@ async with client.subscribe("topic", queue_maxsize=1000) as stream:
 python SDK/examples/run_mock_server.py  # Mock 서버
 
 # 터미널 2: 구독
-python SDK/wss-mqtt-client/examples/subscriber.py
+python SDK/client/python/wss-mqtt-client/examples/subscriber.py
 
 # 터미널 3: 발행
-python SDK/wss-mqtt-client/examples/publisher.py
+python SDK/client/python/wss-mqtt-client/examples/publisher.py
 ```
 
 ### 11.2 MQTT 브로커 (Docker)
@@ -419,8 +419,8 @@ python SDK/wss-mqtt-client/examples/publisher.py
 ```bash
 cd SDK && docker compose up -d
 
-python SDK/wss-mqtt-client/examples/mqtt_subscriber.py   # 터미널 1
-python SDK/wss-mqtt-client/examples/mqtt_publisher.py    # 터미널 2
+python SDK/client/python/wss-mqtt-client/examples/mqtt_subscriber.py   # 터미널 1
+python SDK/client/python/wss-mqtt-client/examples/mqtt_publisher.py    # 터미널 2
 ```
 
 ### 11.3 예제 목록
@@ -437,7 +437,7 @@ python SDK/wss-mqtt-client/examples/mqtt_publisher.py    # 터미널 2
 | mqtt_publisher.py | MQTT 브로커 발행 |
 | mqtt_subscriber.py | MQTT 브로커 구독 |
 
-자세한 실행 방법은 `SDK/examples/README.md`를 참고하세요. (예제 경로: `SDK/wss-mqtt-client/examples/`)
+자세한 실행 방법은 `SDK/examples/README.md`를 참고하세요. (예제 경로: `SDK/client/python/wss-mqtt-client/examples/`)
 
 ---
 

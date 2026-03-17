@@ -1,29 +1,22 @@
 # SDK
 
-WSS-MQTT API 클라이언트 및 TGU RPC SDK 모음.
+WSS-MQTT API 클라이언트 및 MaaS RPC SDK 모음.
 
 ## 패키지 구성
 
 | 패키지 | 경로 | 설명 |
 |--------|------|------|
-| **wss-mqtt-client** | `wss-mqtt-client/` | WSS-MQTT API / MQTT 브로커 클라이언트 |
-| **tgu-rpc-sdk** | `tgu-rpc-sdk/` | TGU RPC 클라이언트 (wss-mqtt-client 의존) |
+| **wss-mqtt-client** | `client/python/wss-mqtt-client/` | WSS-MQTT API / MQTT 브로커 클라이언트 |
+| **maas-rpc-client-sdk** | `client/python/maas-rpc-client-sdk/` | MaaS RPC 클라이언트 (wss-mqtt-client 의존) |
 
-## 설치
+> 각 패키지의 개별 설치 방법은 패키지 디렉터리 안의 `README.md`를 참고하세요.
 
-```bash
-# wss-mqtt-client (필수)
-pip install -e SDK/wss-mqtt-client
-
-# tgu-rpc-sdk (선택)
-pip install -e SDK/tgu-rpc-sdk
-```
-
-## 통합 설치 (개발용)
+## 전체 설치 (워크스페이스 루트 기준, 개발용)
 
 ```bash
-pip install -e SDK/wss-mqtt-client[dev]
-pip install -e SDK/tgu-rpc-sdk
+# 의존 순서대로 설치
+pip install -e SDK/client/python/wss-mqtt-client[dev]
+pip install -e SDK/client/python/maas-rpc-client-sdk
 ```
 
 ## 예제 실행
