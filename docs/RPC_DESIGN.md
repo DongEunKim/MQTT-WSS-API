@@ -91,3 +91,4 @@
 - VISSv2 Transport (W3C) — MQTT RPC 패턴 참조
 - `docs/TOPIC_AND_ACL_SPEC.md` — WMT/WMO 토픽 및 ACL
 - `docs/system_specification_v1.md` — WSS-MQTT API 사양
+- `docs/RPC_SEQUENCE_DIAGRAMS.md` — 패턴별 상세 시퀀스 다이어그램

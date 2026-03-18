@@ -8,6 +8,7 @@
 | [SDK_USER_GUIDE.md](SDK_USER_GUIDE.md) | SDK 사용 설명서 — 설치, 클라이언트 사용법, 예제 |
 | [TOPIC_AND_ACL_SPEC.md](TOPIC_AND_ACL_SPEC.md) | 토픽 패턴(WMT/WMO), ACL 규격 |
 | [RPC_DESIGN.md](RPC_DESIGN.md) | RPC 방법론 및 전송 계층 설계 (MQTT, payload 상관관계) |
+| [RPC_SEQUENCE_DIAGRAMS.md](RPC_SEQUENCE_DIAGRAMS.md) | RPC 패턴별 시퀀스 다이어그램 (정상/예외 흐름, 메시지 사양 포함) |
 | [RPC_CLIENT_SDK_DEVELOPMENT_PLAN.md](RPC_CLIENT_SDK_DEVELOPMENT_PLAN.md) | RPC Client SDK 아키텍처·개발 계획 (진행 상황은 루트 [TODO.md](../TODO.md) 참고) |
 
 예제 실행 방법은 [SDK/examples/README.md](../SDK/examples/README.md) 참고.
