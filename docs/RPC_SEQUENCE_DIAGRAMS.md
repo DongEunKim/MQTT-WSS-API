@@ -28,12 +28,10 @@
 
 ---
 
-## 패턴 1 — `call()` : 단일 요청-응답
-
-### 1-0 엣지 서버 사전 구독 (서버 시작 시 1회)
+## 0 — 엣지 서버 사전 구독 (서버 시작 시 1회)
 
 > 엣지 서버가 기동될 때 요청 토픽을 미리 구독해 두어야 클라이언트 요청을 수신할 수 있다.  
-> 이 구독은 서버 SDK가 시작 시 1회 수행하며, 이후 모든 클라이언트 요청을 공유한다.
+> 이 구독은 서버 SDK 시작 시 **1회** 수행하며, 이후 모든 클라이언트 요청에 공유된다.
 
 ```mermaid
 sequenceDiagram
@@ -41,11 +39,12 @@ sequenceDiagram
     participant Edge
     participant Broker
 
-    Note over Edge: 서버 SDK 시작 (Server.run_forever())
+    Note over Edge: 서버 SDK 시작 — Server.run_forever()
     Note over Edge: thing_name = "device_001"
 
     Edge->>Broker: MQTT SUBSCRIBE WMT/+/device_001/+/+/request
-    Note over Edge,Broker: oem·asset 와일드카드(+)로 구독<br/>→ 모든 허가된 클라이언트 요청 수신
+    Note over Broker: oem·asset 은 와일드카드(+) 구독
+    Note over Broker: 접근 제어는 GW 가 담당
     Broker-->>Edge: SUBACK
 
     Note over Edge: 요청 대기 상태
@@ -54,18 +53,20 @@ sequenceDiagram
 **구독 패턴 상세**
 
 ```
-단일 서비스 구독:  WMT/RemoteUDS/device_001/+/+/request
-복수 서비스 구독:  WMT/+/device_001/+/+/request
+단일 서비스:  WMT/RemoteUDS/device_001/+/+/request
+복수 서비스:  WMT/+/device_001/+/+/request
 ```
 
-- `oem`, `asset` 세그먼트를 `+` 와일드카드로 구독 — 접근 제어는 API 게이트웨이(GW)가 담당
-- 수신 메시지 토픽에서 `oem`, `asset` 값을 파싱하여 `RequestContext`에 주입
+- `oem`, `asset` 을 `+` 와일드카드로 구독 — 접근 제어는 GW 가 담당
+- 수신 토픽에서 `oem`, `asset` 값을 파싱하여 `RequestContext` 에 주입
 
 ---
 
-### 1-1 정상 흐름 (전체)
+## 패턴 1 — `call()` : 단일 요청-응답
 
-> 엣지 서버의 사전 구독(1-0)이 완료된 상태를 전제로 한다.
+### 1-1 정상 흐름
+
+> 전제: **0** 의 엣지 서버 사전 구독이 완료된 상태
 
 ```mermaid
 sequenceDiagram
@@ -76,33 +77,35 @@ sequenceDiagram
     participant Broker
     participant Edge
 
-    Note over Edge,Broker: 전제: 엣지 서버가 WMT/+/device_001/+/+/request 구독 완료
-    Note over SDK,GW: 전제: 클라이언트 WebSocket 연결 및 JWT 인증 완료
+    Note over Edge,Broker: [전제] Edge 가 WMT/+/device_001/+/+/request 구독 완료
+    Note over SDK,GW: [전제] 클라이언트 WebSocket 연결 및 JWT 인증 완료
 
     App->>SDK: call("RemoteUDS", payload)
+    Note over SDK: request_id 생성
+    Note over SDK: req_topic = WMT/RemoteUDS/device_001/acme/VIN123/request
+    Note over SDK: res_topic = WMO/RemoteUDS/device_001/acme/VIN123/client_A/response
 
-    Note over SDK: request_id 생성<br/>req_topic = WMT/RemoteUDS/device_001/acme/VIN123/request<br/>res_topic = WMO/RemoteUDS/device_001/acme/VIN123/client_A/response
-
-    SDK->>GW: SUBSCRIBE 응답토픽
-    GW->>GW: ACL 검사 (service·oem+asset·client_id)
+    SDK->>GW: SUBSCRIBE res_topic
+    GW->>GW: ACL 검사 (service · oem+asset · client_id)
     GW->>Broker: MQTT SUBSCRIBE
     GW-->>SDK: ACK 200
 
-    SDK->>GW: PUBLISH 요청토픽 + RPC payload
-    GW->>GW: ACL 검사 (service·oem+asset)
+    SDK->>GW: PUBLISH req_topic [RPC payload]
+    GW->>GW: ACL 검사 (service · oem+asset)
     GW->>Broker: MQTT PUBLISH
     GW-->>SDK: ACK 200
 
-    Broker->>Edge: 메시지 전달 (사전 구독 패턴에 매칭)
-    Note over Edge: 토픽에서 oem·asset 파싱<br/>action 핸들러 실행
+    Broker->>Edge: 메시지 전달
+    Note over Edge: 토픽에서 oem·asset 파싱
+    Note over Edge: action 핸들러 실행
 
-    Edge->>Broker: PUBLISH 응답토픽 (payload.response_topic 사용)
+    Edge->>Broker: PUBLISH res_topic [성공 응답]
     Broker->>GW: 메시지 전달
     GW->>SDK: SUBSCRIPTION 이벤트
 
     Note over SDK: request_id 매칭 → result 반환
 
-    SDK->>GW: UNSUBSCRIBE 응답토픽
+    SDK->>GW: UNSUBSCRIBE res_topic
     SDK-->>App: return result
 ```
 
@@ -133,6 +136,8 @@ sequenceDiagram
 
 ### 1-2 예외 — 엣지 서버 에러 응답 (RpcError)
 
+> 전제: Edge 가 WMT/+/device_001/+/+/request 구독 완료
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -142,23 +147,25 @@ sequenceDiagram
     participant Broker
     participant Edge
 
+    Note over Edge,Broker: [전제] Edge 가 WMT/+/device_001/+/+/request 구독 완료
+
     App->>SDK: call("RemoteUDS", payload)
-    SDK->>GW: SUBSCRIBE 응답토픽
+    SDK->>GW: SUBSCRIBE res_topic
     GW-->>SDK: ACK 200
-    SDK->>GW: PUBLISH 요청토픽
+    SDK->>GW: PUBLISH req_topic [RPC payload]
     GW-->>SDK: ACK 200
     GW->>Broker: MQTT PUBLISH
     Broker->>Edge: 메시지 전달
 
-    Note over Edge: 처리 실패 → 에러 응답 생성
+    Note over Edge: 처리 실패 — 에러 응답 생성
 
-    Edge->>Broker: PUBLISH 응답토픽 (에러 응답)
+    Edge->>Broker: PUBLISH res_topic [에러 응답]
     Broker->>GW: 메시지 전달
     GW->>SDK: SUBSCRIPTION 이벤트
 
     Note over SDK: error 필드 존재 → RpcError
 
-    SDK->>GW: UNSUBSCRIBE 응답토픽
+    SDK->>GW: UNSUBSCRIBE res_topic
     SDK-->>App: raise RpcError(code, message)
 ```
 
@@ -179,6 +186,8 @@ sequenceDiagram
 
 ### 1-3 예외 — 응답 타임아웃 (RpcTimeoutError)
 
+> 전제: Edge 가 WMT/+/device_001/+/+/request 구독 완료
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -188,18 +197,20 @@ sequenceDiagram
     participant Broker
     participant Edge
 
+    Note over Edge,Broker: [전제] Edge 가 WMT/+/device_001/+/+/request 구독 완료
+
     App->>SDK: call("RemoteUDS", payload, timeout=5.0)
-    SDK->>GW: SUBSCRIBE 응답토픽
+    SDK->>GW: SUBSCRIBE res_topic
     GW-->>SDK: ACK 200
-    SDK->>GW: PUBLISH 요청토픽
+    SDK->>GW: PUBLISH req_topic [RPC payload]
     GW-->>SDK: ACK 200
     GW->>Broker: MQTT PUBLISH
     Broker->>Edge: 메시지 전달
 
     Note over Edge: 응답 없음 (처리 지연 / 네트워크 단절)
-    Note over SDK: ⏱ timeout=5.0 초 경과
+    Note over SDK: timeout=5.0 초 경과
 
-    SDK->>GW: UNSUBSCRIBE 응답토픽
+    SDK->>GW: UNSUBSCRIBE res_topic
     SDK-->>App: raise RpcTimeoutError(service, request_id, timeout=5.0)
 ```
 
@@ -215,7 +226,7 @@ sequenceDiagram
     participant GW
 
     App->>SDK: call("RemoteUDS", payload)
-    SDK->>GW: SUBSCRIBE 응답토픽
+    SDK->>GW: SUBSCRIBE res_topic
 
     alt oem+asset 권한 없음
         GW-->>SDK: ACK 403 "접근 권한 없음"
@@ -246,7 +257,7 @@ sequenceDiagram
     participant SDK
 
     App->>SDK: call("RemoteUDS", {"params": {"source": 1}})
-    Note over SDK: "action" 필드 없음 → 즉시 거부
+    Note over SDK: "action" 필드 없음 — 즉시 거부
     SDK-->>App: raise ValueError("payload에 'action' 필드가 필요합니다")
 ```
 
@@ -255,9 +266,11 @@ sequenceDiagram
 ## 패턴 2 — `call_stream()` : 단일 요청, 멀티 응답
 
 > 1회 요청 후 서버가 청크를 순차 발행.  
-> `done: true` 또는 `stream_end: true` 수신 시 스트림 종료.
+> `done: true` 수신 시 스트림 종료.
 
 ### 2-1 정상 흐름
+
+> 전제: **0** 의 엣지 서버 사전 구독이 완료된 상태
 
 ```mermaid
 sequenceDiagram
@@ -268,34 +281,33 @@ sequenceDiagram
     participant Broker
     participant Edge
 
+    Note over Edge,Broker: [전제] Edge 가 WMT/+/device_001/+/+/request 구독 완료
+    Note over SDK,GW: [전제] 클라이언트 WebSocket 연결 및 JWT 인증 완료
+
     App->>SDK: call_stream("RemoteDashboard", payload)
+    Note over SDK: request_id, req_topic, res_topic 생성
 
-    Note over Edge,Broker: 전제: 엣지 서버가 WMT/+/device_001/+/+/request 구독 완료
-    Note over SDK: request_id, 요청/응답 토픽 생성
-
-    SDK->>GW: SUBSCRIBE 응답토픽
+    SDK->>GW: SUBSCRIBE res_topic
     GW-->>SDK: ACK 200
-    SDK->>GW: PUBLISH 요청토픽
+    SDK->>GW: PUBLISH req_topic [RPC payload]
     GW-->>SDK: ACK 200
     GW->>Broker: MQTT PUBLISH
-    Broker->>Edge: 메시지 전달 (사전 구독 패턴에 매칭)
+    Broker->>Edge: 메시지 전달
 
     loop 청크 전송 (done=false)
-        Edge->>Broker: PUBLISH 응답토픽 [청크 N, done=false]
+        Edge->>Broker: PUBLISH res_topic [청크 N, done=false]
         Broker->>GW: 메시지 전달
         GW->>SDK: SUBSCRIPTION 이벤트
-        Note over SDK: request_id 매칭 → yield result
+        Note over SDK: request_id 매칭 → yield
         SDK-->>App: yield chunk_N
     end
 
-    Edge->>Broker: PUBLISH 응답토픽 [마지막 청크, done=true]
+    Edge->>Broker: PUBLISH res_topic [마지막 청크, done=true]
     Broker->>GW: 메시지 전달
     GW->>SDK: SUBSCRIPTION 이벤트
-
     Note over SDK: done=true → 마지막 yield 후 루프 종료
-
     SDK-->>App: yield chunk_last
-    SDK->>GW: UNSUBSCRIBE 응답토픽
+    SDK->>GW: UNSUBSCRIBE res_topic
 ```
 
 **중간 청크 Payload**
@@ -303,7 +315,7 @@ sequenceDiagram
 ```json
 {
   "request_id": "c7d8e9f0...",
-  "result": { "chunk": [ 0x01, 0x02 ], "seq": 1 },
+  "result": { "chunk": [1, 2], "seq": 1 },
   "done": false
 }
 ```
@@ -313,7 +325,7 @@ sequenceDiagram
 ```json
 {
   "request_id": "c7d8e9f0...",
-  "result": { "chunk": [ 0x0A, 0x0B ], "seq": 5 },
+  "result": { "chunk": [10, 11], "seq": 5 },
   "done": true
 }
 ```
@@ -321,6 +333,8 @@ sequenceDiagram
 ---
 
 ### 2-2 예외 — 스트림 중 에러 응답
+
+> 전제: Edge 가 WMT/+/device_001/+/+/request 구독 완료
 
 ```mermaid
 sequenceDiagram
@@ -331,26 +345,29 @@ sequenceDiagram
     participant Broker
     participant Edge
 
+    Note over Edge,Broker: [전제] Edge 가 WMT/+/device_001/+/+/request 구독 완료
+
     App->>SDK: call_stream("RemoteDashboard", payload)
-    SDK->>GW: SUBSCRIBE + PUBLISH
-    GW-->>SDK: ACK 200 × 2
+    SDK->>GW: SUBSCRIBE res_topic
+    GW-->>SDK: ACK 200
+    SDK->>GW: PUBLISH req_topic [RPC payload]
+    GW-->>SDK: ACK 200
     GW->>Broker: MQTT PUBLISH
     Broker->>Edge: 메시지 전달
 
-    Edge->>Broker: PUBLISH 응답토픽 [청크 1, done=false]
-    Broker->>GW: 전달
-    GW->>SDK: SUBSCRIPTION
+    Edge->>Broker: PUBLISH res_topic [청크 1, done=false]
+    Broker->>GW: 메시지 전달
+    GW->>SDK: SUBSCRIPTION 이벤트
     SDK-->>App: yield chunk_1
 
     Note over Edge: 처리 중 오류 발생
 
-    Edge->>Broker: PUBLISH 응답토픽 [에러 응답]
-    Broker->>GW: 전달
-    GW->>SDK: SUBSCRIPTION
-
+    Edge->>Broker: PUBLISH res_topic [에러 응답]
+    Broker->>GW: 메시지 전달
+    GW->>SDK: SUBSCRIPTION 이벤트
     Note over SDK: error 필드 존재 → 스트림 즉시 중단
 
-    SDK->>GW: UNSUBSCRIBE 응답토픽
+    SDK->>GW: UNSUBSCRIBE res_topic
     SDK-->>App: raise RpcError(code="SENSOR_DISCONNECTED", ...)
 ```
 
@@ -358,23 +375,32 @@ sequenceDiagram
 
 ### 2-3 예외 — 첫 청크 수신 타임아웃
 
+> 전제: Edge 가 WMT/+/device_001/+/+/request 구독 완료
+
 ```mermaid
 sequenceDiagram
     autonumber
     participant App
     participant SDK
     participant GW
+    participant Broker
     participant Edge
 
+    Note over Edge,Broker: [전제] Edge 가 WMT/+/device_001/+/+/request 구독 완료
+
     App->>SDK: call_stream("RemoteDashboard", payload, timeout=10.0)
-    SDK->>GW: SUBSCRIBE + PUBLISH
-    GW-->>SDK: ACK 200 × 2
+    SDK->>GW: SUBSCRIBE res_topic
+    GW-->>SDK: ACK 200
+    SDK->>GW: PUBLISH req_topic [RPC payload]
+    GW-->>SDK: ACK 200
+    GW->>Broker: MQTT PUBLISH
+    Broker->>Edge: 메시지 전달
 
     Note over Edge: 응답 없음
 
-    Note over SDK: ⏱ timeout=10.0 초 경과
+    Note over SDK: timeout=10.0 초 경과
 
-    SDK->>GW: UNSUBSCRIBE 응답토픽
+    SDK->>GW: UNSUBSCRIBE res_topic
     SDK-->>App: raise RpcTimeoutError(service, request_id, timeout=10.0)
 ```
 
@@ -396,7 +422,9 @@ sequenceDiagram
 
     SDK->>GW: WebSocket Upgrade (Authorization: Bearer JWT)
 
-    GW->>GW: JWT 검증<br/>서명·만료 확인<br/>client_id·oem+asset 목록 추출<br/>세션 초기화
+    GW->>GW: JWT 서명·만료 검증
+    GW->>GW: client_id·oem+asset 목록 추출
+    GW->>GW: 세션 초기화
 
     alt 인증 성공
         GW-->>SDK: 101 Switching Protocols
@@ -438,7 +466,9 @@ sequenceDiagram
 ## 패턴 4 — 복수 클라이언트 동시 접근
 
 > 동일 엣지 서버에 A, B 두 클라이언트가 동시에 요청.  
-> `client_id`가 다르면 응답 토픽이 완전히 격리된다.
+> `client_id` 가 다르면 응답 토픽이 완전히 격리된다.
+
+> 전제: Edge 가 WMT/+/device_001/+/+/request 구독 완료
 
 ```mermaid
 sequenceDiagram
@@ -449,7 +479,9 @@ sequenceDiagram
     participant Broker
     participant Edge
 
-    Note over A,B: A: client_id=client_A / B: client_id=client_B
+    Note over Edge,Broker: [전제] Edge 가 WMT/+/device_001/+/+/request 구독 완료
+    Note over A: client_id = client_A
+    Note over B: client_id = client_B
 
     par 동시 구독
         A->>GW: SUBSCRIBE WMO/.../client_A/response
@@ -479,7 +511,9 @@ sequenceDiagram
     GW->>A: SUBSCRIPTION [req-AAA]
     GW->>B: SUBSCRIPTION [req-BBB]
 
-    Note over A,B: 각자 자신의 응답만 수신.<br/>타 클라이언트 토픽 구독 시도 → GW가 ACK 403 거부.
+    Note over A: 자신의 응답만 수신
+    Note over B: 자신의 응답만 수신
+    Note over GW: 타 클라이언트 토픽 구독 시도 시 ACK 403 거부
 ```
 
 ---
