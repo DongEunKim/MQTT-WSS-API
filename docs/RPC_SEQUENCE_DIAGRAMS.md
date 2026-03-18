@@ -30,7 +30,42 @@
 
 ## 패턴 1 — `call()` : 단일 요청-응답
 
-### 1-1 정상 흐름
+### 1-0 엣지 서버 사전 구독 (서버 시작 시 1회)
+
+> 엣지 서버가 기동될 때 요청 토픽을 미리 구독해 두어야 클라이언트 요청을 수신할 수 있다.  
+> 이 구독은 서버 SDK가 시작 시 1회 수행하며, 이후 모든 클라이언트 요청을 공유한다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Edge
+    participant Broker
+
+    Note over Edge: 서버 SDK 시작 (Server.run_forever())
+    Note over Edge: thing_name = "device_001"
+
+    Edge->>Broker: MQTT SUBSCRIBE WMT/+/device_001/+/+/request
+    Note over Edge,Broker: oem·asset 와일드카드(+)로 구독<br/>→ 모든 허가된 클라이언트 요청 수신
+    Broker-->>Edge: SUBACK
+
+    Note over Edge: 요청 대기 상태
+```
+
+**구독 패턴 상세**
+
+```
+단일 서비스 구독:  WMT/RemoteUDS/device_001/+/+/request
+복수 서비스 구독:  WMT/+/device_001/+/+/request
+```
+
+- `oem`, `asset` 세그먼트를 `+` 와일드카드로 구독 — 접근 제어는 API 게이트웨이(GW)가 담당
+- 수신 메시지 토픽에서 `oem`, `asset` 값을 파싱하여 `RequestContext`에 주입
+
+---
+
+### 1-1 정상 흐름 (전체)
+
+> 엣지 서버의 사전 구독(1-0)이 완료된 상태를 전제로 한다.
 
 ```mermaid
 sequenceDiagram
@@ -41,11 +76,12 @@ sequenceDiagram
     participant Broker
     participant Edge
 
-    Note over SDK,GW: 전제: WebSocket 연결 및 JWT 인증 완료
+    Note over Edge,Broker: 전제: 엣지 서버가 WMT/+/device_001/+/+/request 구독 완료
+    Note over SDK,GW: 전제: 클라이언트 WebSocket 연결 및 JWT 인증 완료
 
     App->>SDK: call("RemoteUDS", payload)
 
-    Note over SDK: request_id, 요청/응답 토픽 생성
+    Note over SDK: request_id 생성<br/>req_topic = WMT/RemoteUDS/device_001/acme/VIN123/request<br/>res_topic = WMO/RemoteUDS/device_001/acme/VIN123/client_A/response
 
     SDK->>GW: SUBSCRIBE 응답토픽
     GW->>GW: ACL 검사 (service·oem+asset·client_id)
@@ -57,10 +93,10 @@ sequenceDiagram
     GW->>Broker: MQTT PUBLISH
     GW-->>SDK: ACK 200
 
-    Broker->>Edge: 메시지 전달
-    Note over Edge: action 핸들러 실행
+    Broker->>Edge: 메시지 전달 (사전 구독 패턴에 매칭)
+    Note over Edge: 토픽에서 oem·asset 파싱<br/>action 핸들러 실행
 
-    Edge->>Broker: PUBLISH 응답토픽 (성공 응답)
+    Edge->>Broker: PUBLISH 응답토픽 (payload.response_topic 사용)
     Broker->>GW: 메시지 전달
     GW->>SDK: SUBSCRIPTION 이벤트
 
@@ -234,6 +270,7 @@ sequenceDiagram
 
     App->>SDK: call_stream("RemoteDashboard", payload)
 
+    Note over Edge,Broker: 전제: 엣지 서버가 WMT/+/device_001/+/+/request 구독 완료
     Note over SDK: request_id, 요청/응답 토픽 생성
 
     SDK->>GW: SUBSCRIBE 응답토픽
@@ -241,7 +278,7 @@ sequenceDiagram
     SDK->>GW: PUBLISH 요청토픽
     GW-->>SDK: ACK 200
     GW->>Broker: MQTT PUBLISH
-    Broker->>Edge: 메시지 전달
+    Broker->>Edge: 메시지 전달 (사전 구독 패턴에 매칭)
 
     loop 청크 전송 (done=false)
         Edge->>Broker: PUBLISH 응답토픽 [청크 N, done=false]
