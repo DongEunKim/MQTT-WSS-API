@@ -18,8 +18,6 @@
 | [SDM_MaaS_RPC_SysRS.md](SDM_MaaS_RPC_SysRS.md) | SDM MaaS 전체 시스템 요구사양서 |
 | [MQTT Bridge.md](MQTT%20Bridge.md) | SDM 내 MQTT 브리지 인프라 정의 |
 | [RPC 보안정책.md](RPC%20보안정책.md) | RPC 인증/인가 보안 정책 |
-| [정책 기반 텔레매트리 시스템 요구사양서.md](정책%20기반%20텔레매트리%20시스템%20요구사양서.md) | 정책 기반 텔레매트리 시스템 요구사양 |
-| [SDM Connectivity의 CRA 대응을 위한 망분리 정책 시스템 요구사양서 v2.md](SDM%20Connectivity의%20CRA%20대응을%20위한%20망분리%20정책%20시스템%20요구사양서%20v2.md) | CRA 대응 망분리 정책 시스템 요구사양 (v2) |
 
 ## SDK 패키지
 
