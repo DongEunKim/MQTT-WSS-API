@@ -1,51 +1,34 @@
-# WSS-MQTT API
+# MaaS MQTT RPC (wss-mqtt-api)
 
-WebSocket Secure(WSS) 클라이언트와 MQTT 브로커 간 프로토콜 변환 API 프로젝트입니다.
+AWS IoT Core(MQTT 5.0) 기반 **MaaS(Machine as a Service) RPC** 설계 및 Python SDK 저장소입니다.  
+별도 Envelope 게이트웨이 없이 `WMT` / `WMO` 토픽과 MQTT 5.0 Properties로 요청-응답·스트리밍을 처리합니다.
 
 ## 프로젝트 구조
 
 ```
-├── docs/                    # 사양·가이드 (목록: docs/README.md)
-└── SDK/                     # Python SDK
-    ├── wss-mqtt-client/     # WSS-MQTT 클라이언트
-    ├── maas-rpc-client-sdk/ # MaaS RPC Client SDK
-    └── examples/            # Mock 서버, 예제 실행
+├── docs/          # 사양·가이드 (docs/README.md)
+└── SDK/
+    ├── client/python/maas-client-sdk/   # 클라이언트 SDK
+    ├── server/python/maas-server-sdk/   # 서버(서비스) SDK
+    └── examples/                        # 브로커 디버깅 스크립트 등
 ```
 
-## 개발 환경 설정
-
-프로젝트 루트에서 가상환경을 구축합니다.
+## 개발 환경
 
 ```bash
-# 가상환경 생성
 python3 -m venv .venv
-
-# 활성화 (Linux/macOS)
 source .venv/bin/activate
-
-# SDK 설치 (에디터블 모드)
-pip install -e SDK/client/python/wss-mqtt-client
-
-# 또는 requirements.txt 사용 (개발 의존성 포함)
 pip install -r requirements.txt
 ```
 
-이후 `python` 명령으로 SDK 예제 및 테스트를 실행할 수 있습니다.
-
 ## 문서
 
-- [문서 목록](docs/README.md) - 사양·가이드·설계 문서
-- [SDK 사용 설명서](docs/SDK_USER_GUIDE.md) - 설치, 사용법, API 참조
-- [예제 실행](SDK/examples/README.md) - Mock 서버 및 예제 실행 방법
+- [문서 목록](docs/README.md)
+- [RPC 설계](docs/RPC_DESIGN.md) — 패턴 A~E
+- [토픽·ACL](docs/TOPIC_AND_ACL_SPEC.md)
+- [SDK 개요](SDK/README.md)
+- [예제·로컬 브로커](SDK/examples/README.md)
 
-### 주요 기능 (SDK)
+## 진행 작업
 
-- **WssMqttClient** (기본, 동기): 콜백 subscribe, `run_forever()`
-- **WssMqttClientAsync** (고급, 비동기): async/await, 배치·다중 구독
-- **transport**: wss-mqtt-api(기본), mqtt(네이티브 MQTT TCP/WebSocket)
-- **MessagePack**: payload bytes 시 직렬화, 수신 자동 파싱
-- **자동 재연결**: exponential backoff, 구독 복구 (비동기)
-
-## 진행 예정 작업
-
-추가 예정 기능 및 개선 사항은 [TODO.md](TODO.md) 를 참고하세요.
+[TODO.md](TODO.md) 참고.

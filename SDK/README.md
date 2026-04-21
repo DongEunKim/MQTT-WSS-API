@@ -1,29 +1,31 @@
 # SDK
 
-WSS-MQTT API 클라이언트 및 MaaS RPC SDK 모음.
+MQTT 5.0 기반 **MaaS Client SDK** 및 **MaaS Server SDK** (Python 3.10+).
 
-## 패키지 구성
+## 패키지
 
 | 패키지 | 경로 | 설명 |
 |--------|------|------|
-| **wss-mqtt-client** | `client/python/wss-mqtt-client/` | WSS-MQTT API / MQTT 브로커 클라이언트 |
-| **maas-rpc-client-sdk** | `client/python/maas-rpc-client-sdk/` | MaaS RPC 클라이언트 (wss-mqtt-client 의존) |
+| **maas-client-sdk** | `client/python/maas-client-sdk/` | 클라이언트 앱용 — RPC(`call`, `stream`) 및 임의 pub/sub |
+| **maas-server-sdk** | `server/python/maas-server-sdk/` | 서비스 구현용 — `@server.action` 핸들러 및 pub/sub |
 
-> 각 패키지의 개별 설치 방법은 패키지 디렉터리 안의 `README.md`를 참고하세요.
+별도 Envelope 프로토콜 없이 MQTT 5.0 `Response Topic`, `Correlation Data`, `User Properties`를 사용한다.
 
-## 전체 설치 (워크스페이스 루트 기준, 개발용)
+## 설치 (개발)
 
 ```bash
-# 의존 순서대로 설치
-pip install -e SDK/client/python/wss-mqtt-client[dev]
-pip install -e SDK/client/python/maas-rpc-client-sdk
+pip install -e SDK/client/python/maas-client-sdk[dev]
+pip install -e SDK/server/python/maas-server-sdk[dev]
 ```
 
-## 예제 실행
-
-Mock 서버와 클라이언트 예제는 [examples/README.md](examples/README.md) 참고.
+또는 저장소 루트에서 `pip install -r requirements.txt`.
 
 ## 문서
 
-- [SDK 사용 설명서](../docs/SDK_USER_GUIDE.md) - wss-mqtt-client 상세 사용법
-- [문서 목록](../docs/README.md) - 사양·가이드·설계 문서
+- [RPC 설계](../docs/RPC_DESIGN.md) — 패턴 A~E, 내부 메커니즘
+- [토픽·ACL 규격](../docs/TOPIC_AND_ACL_SPEC.md) — WMT/WMO 토픽 구조
+- [문서 목록](../docs/README.md)
+
+## 예제
+
+로컬 브로커·통합 테스트는 [examples/README.md](examples/README.md)를 참고한다.
