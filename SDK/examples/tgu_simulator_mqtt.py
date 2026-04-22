@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """
-TGU 시뮬레이터 (MQTT 브로커 연결).
+[구형·비권장] TGU 시뮬레이터 (원시 paho-mqtt).
+
+현행 규격(`docs/TOPIC_AND_ACL_SPEC.md`)의 WMT 6단 토픽·MQTT 5.0 Properties와
+맞지 않는 레거시 페이로드(`response_topic` JSON 필드 등)를 사용한다.
+
+엔드투엔드 검증은 `rpc_local_echo_service.py` + `rpc_local_call_client.py`
+ 및 설치된 `maas-server-sdk` / `maas-client-sdk` 사용을 권장한다.
 
 실제 MQTT 브로커에 연결하여 WMT/.../request 토픽을 구독하고,
 수신 시 Mock 응답을 response_topic으로 발행한다.
 RPC 테스트 시 TGU 역할을 대신한다.
 
 Usage:
-    # 터미널 1: cd SDK && docker compose up -d
+    # 터미널 1: Mosquitto 기동 (SDK/examples/README.md 참고)
     # 터미널 2: python SDK/examples/tgu_simulator_mqtt.py
     # 터미널 3: python SDK/examples/mqtt_topic_monitor.py  (선택)
     # 터미널 4: 클라이언트 앱(maas-client-sdk)으로 WMT 요청 발행

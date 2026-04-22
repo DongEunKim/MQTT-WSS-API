@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MaaS Python SDK 설치 스크립트 (클라이언트)
+# MaaS Python SDK 설치 스크립트 (서버)
 #
 # 사용법 (이 파일이 있는 python/ 디렉터리 안에서 실행):
 #   bash install.sh           — 기본 설치
@@ -16,13 +16,13 @@ for arg in "$@"; do
   esac
 done
 
-echo "=== maas-client-sdk 설치 ==="
+echo "=== maas-server-sdk 설치 ==="
 
 if [ "$DEV" -eq 1 ]; then
-  pip install -e "${SCRIPT_DIR}/maas-client-sdk[dev]"
+  pip install -e "${SCRIPT_DIR}/maas-server-sdk[dev]"
 else
-  pip install -e "${SCRIPT_DIR}/maas-client-sdk"
+  pip install -e "${SCRIPT_DIR}/maas-server-sdk"
 fi
 
-echo "설치 완료.  from maas_client import MaasClient"
-echo "사용법: maas-client-sdk/README.md"
+echo "설치 완료.  from maas_server import MaasServer, RpcContext"
+echo "사용법: maas-server-sdk/README.md"

@@ -103,6 +103,8 @@ JSON 페이로드(권장)에서 다음 필드를 사용한다.
 
 `action` 외 필드는 서비스별 계약으로 자유롭게 정의한다. 서로 다른 서비스는 토픽의 `{Service}` 로 구분한다.
 
+> **서버 SDK (`maas-server-sdk`) 라우팅:** 규격상 권장 필드명은 `action` 이다. 구현에서는 `MaasServer(..., route_key="action")`(기본값)으로 페이로드에서 라우팅에 쓸 **JSON 키**를 바꿀 수 있다(예: `method`, `op`). `route_key=None` 이면 `@server.action` 은 사용하지 않고 `@server.default` 하나만 등록하며, 이때는 라우팅용 필드를 페이로드에서 제거하지 않고 본문 전체를 핸들러에 넘긴다. 자세한 설명은 [SDK 설계요구사양서](SDK%20설계요구사양서.md) Part 1, `SDK/server/python/maas-server-sdk/README.md` 참고.
+
 ---
 
 ## 6. MQTT 5.0 Properties 사용 규약

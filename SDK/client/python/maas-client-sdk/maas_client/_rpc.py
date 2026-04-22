@@ -50,22 +50,24 @@ def _raise_for_reason_code(rc: int, detail: str, service: str, action: str) -> N
     raise RpcServerError(rc, detail)
 
 
-def _build_request_payload(action: str, payload: Any) -> bytes:
+def _build_request_payload(action: str, params: Any) -> bytes:
     """
-    action을 페이로드에 주입하여 직렬화.
+    action과 RPC params를 MQTT PUBLISH 본문(JSON bytes)으로 직렬화.
 
-    action은 항상 최종 값이 되도록 payload dict보다 후순위로 덮어쓴다.
+    JSON 객체에서는 ``action`` 키를 항상 선행(첫 필드)으로 둔다.
+    params에 ``action`` 키가 있어도 인자 ``action``이 최종 값으로 쓰인다.
     """
-    if isinstance(payload, dict):
-        data = {**payload, "action": action}
-    elif payload is None:
+    if isinstance(params, dict):
+        rest = {k: v for k, v in params.items() if k != "action"}
+        data = {"action": action, **rest}
+    elif params is None:
         data = {"action": action}
     else:
         data = {
             "action": action,
-            "data": payload
-            if not isinstance(payload, bytes)
-            else payload.decode("utf-8", errors="replace"),
+            "data": params
+            if not isinstance(params, bytes)
+            else params.decode("utf-8", errors="replace"),
         }
     return json.dumps(data, ensure_ascii=False).encode("utf-8")
 
@@ -170,7 +172,7 @@ class RpcManager:
         service: str,
         action: str,
         vin: str,
-        payload: Any = None,
+        params: Any = None,
         *,
         qos: int = 1,
         timeout: float = 10.0,
@@ -182,9 +184,9 @@ class RpcManager:
         Args:
             thing_type: 토픽의 {ThingType}.
             service: 토픽의 {Service}.
-            action: 페이로드에 삽입할 action.
+            action: 요청 JSON에 삽입할 action.
             vin: 토픽의 {VIN}.
-            payload: 추가 페이로드 (dict 권장). action 필드는 SDK가 자동 삽입.
+            params: RPC 인자 (dict 권장). action 키는 SDK가 덮어쓴다.
             qos: MQTT QoS (0 또는 1).
             timeout: 응답 대기 타임아웃(초).
             expiry: Message Expiry Interval(초). 패턴 D용.
@@ -206,7 +208,7 @@ class RpcManager:
             correlation_data=corr_id,
             message_expiry=expiry,
         )
-        raw = _build_request_payload(action, payload)
+        raw = _build_request_payload(action, params)
 
         try:
             await self._conn.publish(request_topic, raw, qos=qos, properties=props)
@@ -226,7 +228,7 @@ class RpcManager:
         service: str,
         action: str,
         vin: str,
-        payload: Any = None,
+        params: Any = None,
         *,
         qos: int = 1,
     ) -> AsyncIterator[StreamEvent]:
@@ -236,9 +238,9 @@ class RpcManager:
         Args:
             thing_type: 토픽의 {ThingType}.
             service: 토픽의 {Service}.
-            action: 페이로드에 삽입할 action.
+            action: 요청 JSON에 삽입할 action.
             vin: 토픽의 {VIN}.
-            payload: 추가 페이로드.
+            params: RPC 인자.
             qos: MQTT QoS.
 
         Yields:
@@ -260,7 +262,7 @@ class RpcManager:
             response_topic=response_topic,
             correlation_data=corr_id,
         )
-        raw = _build_request_payload(action, payload)
+        raw = _build_request_payload(action, params)
 
         try:
             await self._conn.publish(request_topic, raw, qos=qos, properties=props)

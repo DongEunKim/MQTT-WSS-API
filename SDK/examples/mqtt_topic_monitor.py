@@ -5,7 +5,7 @@ MQTT 토픽 모니터 — 모든 토픽 메시지 감시 (디버깅용).
 브로커의 전체 또는 특정 패턴 토픽을 구독하여 메시지를 실시간으로 출력한다.
 
 Usage:
-    # 브로커 실행: cd SDK && docker compose up -d
+    # 브로커: SDK/examples/README.md 「로컬 MQTT 브로커」 참고
 
     # 모든 토픽 모니터 (#)
     python SDK/examples/mqtt_topic_monitor.py

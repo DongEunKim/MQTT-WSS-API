@@ -8,6 +8,7 @@ maas-client-sdk: MQTT 5.0 기반 MaaS RPC 클라이언트 SDK.
     from maas_client import MaasClientAsync
 """
 
+from .auth import HttpTokenSource, TokenSource, TokenProvider
 from .client import MaasClient
 from .client_async import MaasClientAsync
 from .models import RpcResponse, StreamEvent, Message
@@ -23,6 +24,9 @@ from .exceptions import (
 from . import topics
 
 __all__ = [
+    "HttpTokenSource",
+    "TokenSource",
+    "TokenProvider",
     "MaasClient",
     "MaasClientAsync",
     "RpcResponse",

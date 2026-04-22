@@ -9,7 +9,8 @@ Example::
         thing_type="CGU",
         service_name="viss",
         vin="VIN-123456",
-        endpoint="xxxx.iot.amazonaws.com",
+        endpoint="mqtt.example.com",
+        route_key="action",  # 기본값. 다른 JSON 키 또는 None 은 README·TOPIC_AND_ACL_SPEC §5 참고.
     )
 
     @server.action("get")

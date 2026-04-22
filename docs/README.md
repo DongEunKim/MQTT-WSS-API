@@ -15,15 +15,14 @@
 
 | 문서 | 용도 |
 |------|------|
-| [SDM_MaaS_RPC_SysRS.md](SDM_MaaS_RPC_SysRS.md) | SDM MaaS 전체 시스템 요구사양서 |
-| [MQTT Bridge.md](MQTT%20Bridge.md) | SDM 내 MQTT 브리지 인프라 정의 |
+| [SDM_MaaS_RPC_SysRS.md](SDM_MaaS_RPC_SysRS.md) | 시스템 요구사항 색인(개발 단계, MQTT 중심) |
 | [RPC 보안정책.md](RPC%20보안정책.md) | RPC 인증/인가 보안 정책 |
 
 ## SDK 패키지
 
 | 패키지 | 경로 | 용도 |
 |--------|------|------|
-| `maas-client-sdk` | `SDK/client/python/maas-client-sdk/` | RPC 클라이언트 SDK (클라이언트 앱용) |
-| `maas-server-sdk` | `SDK/server/python/maas-server-sdk/` | RPC 서비스 서버 SDK (Greengrass Component 등) |
+| `maas-client-sdk` | [SDK/client/python/maas-client-sdk/README.md](../SDK/client/python/maas-client-sdk/README.md) | RPC 클라이언트 SDK — 설치·API는 README |
+| `maas-server-sdk` | [SDK/server/python/maas-server-sdk/README.md](../SDK/server/python/maas-server-sdk/README.md) | RPC 서버 SDK — 설치·API는 README |
 
 예제 실행 방법은 [SDK/examples/README.md](../SDK/examples/README.md) 참고.

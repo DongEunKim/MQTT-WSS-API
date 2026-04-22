@@ -33,6 +33,9 @@ _RC_UNSPECIFIED = 0x80
 _RC_PAYLOAD_INVALID = 0x99
 _RC_SERVER_BUSY = 0x8A
 
+# @server.default 전용 내부 라우트 키 (클라이언트 action 이름과 충돌하지 않도록 길게 둔다)
+HANDLER_DEFAULT_KEY = "__maas_sdk_default__"
+
 HandlerFunc = Callable[[RpcContext], Any]
 
 
@@ -51,7 +54,8 @@ class Dispatcher:
     """
     요청 토픽 + 페이로드 라우터.
 
-    페이로드의 ``action`` 값으로 핸들러를 등록·조회한다.
+    페이로드에서 ``route_key`` 로 지정한 필드(기본 ``action``)를 꺼내 핸들러를 조회한다.
+    ``route_key=None`` 이면 페이로드를 나누지 않고 ``@server.default`` 핸들러만 호출한다.
     토픽의 ``{Service}`` 는 ``MaasServer.service_name`` 과 일치할 때만 처리한다.
     응답은 SDK가 자동 발행한다.
     """
@@ -63,12 +67,14 @@ class Dispatcher:
         thing_type: str,
         service_name: str,
         vin: str,
+        route_key: Optional[str] = "action",
     ) -> None:
         self._conn = conn
         self._session = session
         self._thing_type = thing_type
         self._service_name = service_name
         self._vin = vin
+        self._route_key = route_key
         self._handlers: dict[str, HandlerEntry] = {}
         self._pubsub_handlers: dict[str, list[Callable]] = {}
 
@@ -82,7 +88,21 @@ class Dispatcher:
         acquire_lock: bool = False,
         release_lock: bool = False,
     ) -> None:
-        """핸들러 등록 (action 이름은 페이로드 ``action`` 과 동일해야 함)."""
+        """
+        핸들러 등록.
+
+        ``action`` 은 페이로드의 ``route_key`` 필드 값(기본 필드명 ``action``)과 같아야 한다.
+        ``route_key=None`` 인 서버에서는 사용할 수 없다 (``register_default`` 만 허용).
+        """
+        if self._route_key is None:
+            raise ValueError(
+                "MaasServer(route_key=None)에서는 @server.action을 쓸 수 없습니다. "
+                "@server.default 하나만 등록하세요."
+            )
+        if action == HANDLER_DEFAULT_KEY:
+            raise ValueError(
+                f"action 이름 {HANDLER_DEFAULT_KEY!r} 은 SDK 내부용이므로 사용할 수 없습니다."
+            )
         if action in self._handlers:
             logger.warning("핸들러 중복 등록: action=%s", action)
         self._handlers[action] = HandlerEntry(
@@ -93,6 +113,32 @@ class Dispatcher:
             release_lock=release_lock,
         )
         logger.debug("핸들러 등록: action=%s", action)
+
+    def register_default(
+        self,
+        func: HandlerFunc,
+        *,
+        streaming: bool = False,
+        exclusive: bool = False,
+        acquire_lock: bool = False,
+        release_lock: bool = False,
+    ) -> None:
+        """
+        기본 핸들러 등록.
+
+        - ``route_key`` 가 문자열일 때: 해당 필드가 없거나 빈 문자열이면 이 핸들러가 호출된다.
+        - ``route_key=None`` 일 때: 페이로드 전체를 넘기며 이 핸들러만 사용한다.
+        """
+        if HANDLER_DEFAULT_KEY in self._handlers:
+            logger.warning("default 핸들러 중복 등록")
+        self._handlers[HANDLER_DEFAULT_KEY] = HandlerEntry(
+            func=func,
+            streaming=streaming,
+            exclusive=exclusive,
+            acquire_lock=acquire_lock,
+            release_lock=release_lock,
+        )
+        logger.debug("default 핸들러 등록")
 
     def register_pubsub(self, topic: str, func: Callable) -> None:
         """pub/sub 핸들러 등록."""
@@ -126,24 +172,59 @@ class Dispatcher:
             await self._reply_error(msg, _RC_PAYLOAD_INVALID, "페이로드 JSON 파싱 실패")
             return
 
-        action = payload_dict.pop("action", None)
-        if not action:
-            await self._reply_error(msg, _RC_PAYLOAD_INVALID, "action 필드 누락")
+        if not isinstance(payload_dict, dict):
+            await self._reply_error(
+                msg, _RC_PAYLOAD_INVALID, "JSON 페이로드는 객체(dict)여야 합니다"
+            )
             return
 
-        entry = self._handlers.get(action)
-        if not entry:
-            logger.warning("핸들러 없음: action=%s", action)
-            await self._reply_error(msg, 0x90, f"미지원 action: {action}")
-            return
+        route_label: str
+        remaining: dict[str, Any]
+        entry: Optional[HandlerEntry]
+
+        if self._route_key is None:
+            remaining = dict(payload_dict)
+            entry = self._handlers.get(HANDLER_DEFAULT_KEY)
+            if not entry:
+                await self._reply_error(
+                    msg,
+                    _RC_PAYLOAD_INVALID,
+                    "route_key=None 인 서버에 @server.default 핸들러가 없습니다",
+                )
+                return
+            route_label = ""
+        else:
+            remaining = dict(payload_dict)
+            raw_route = remaining.pop(self._route_key, None)
+            if raw_route is None or raw_route == "":
+                entry = self._handlers.get(HANDLER_DEFAULT_KEY)
+                if not entry:
+                    await self._reply_error(
+                        msg,
+                        _RC_PAYLOAD_INVALID,
+                        f"라우팅 필드 누락 또는 빈 값: {self._route_key!r}",
+                    )
+                    return
+                route_label = ""
+            else:
+                route_label = (
+                    raw_route if isinstance(raw_route, str) else str(raw_route)
+                )
+                entry = self._handlers.get(route_label)
+                if not entry:
+                    logger.warning("핸들러 없음: route=%s", route_label)
+                    await self._reply_error(
+                        msg, 0x90, f"미지원 라우트: {route_label}"
+                    )
+                    return
 
         ctx = RpcContext(
             thing_type=parsed.thing_type,
             service=parsed.service,
-            action=action,
+            action=route_label,
             vin=parsed.vin,
             client_id=parsed.client_id,
-            payload=payload_dict,
+            payload=remaining,
             correlation_id=msg.correlation_data,
             response_topic=msg.response_topic,
             user_props=dict(msg.user_props),

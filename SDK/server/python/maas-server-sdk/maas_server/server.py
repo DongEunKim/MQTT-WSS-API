@@ -27,7 +27,8 @@ class MaasServer:
     MQTT 5.0 RPC 서비스 서버.
 
     토픽의 ``{ThingType}``, ``{Service}``, ``{VIN}`` 을 고정하고
-    ``@server.action("이름")`` 으로 페이로드 ``action`` 과 매칭되는 핸들러를 등록한다.
+    기본적으로 페이로드의 ``route_key`` 필드(기본 이름 ``action``)로 핸들러를 고른다.
+    ``route_key=None`` 이면 페이로드를 분해하지 않고 ``@server.default`` 한 개만 둘 수 있다.
 
     Example::
 
@@ -35,7 +36,7 @@ class MaasServer:
             thing_type="CGU",
             service_name="viss",
             vin="VIN-123456",
-            endpoint="xxxx.iot.amazonaws.com",
+            endpoint="mqtt.example.com",
         )
 
         @server.action("get")
@@ -55,6 +56,8 @@ class MaasServer:
         use_wss: bool = False,
         client_id: Optional[str] = None,
         session_idle_timeout: float = 300.0,
+        route_key: Optional[str] = "action",
+        lifecycle_topics: Optional[list[str]] = None,
         *,
         logger: Optional[logging.Logger] = None,
     ) -> None:
@@ -68,8 +71,14 @@ class MaasServer:
             use_wss: True이면 WSS 전송 사용.
             client_id: MQTT 클라이언트 ID. None이면 service_name 기반으로 자동 생성.
             session_idle_timeout: 독점 세션 자동 해제 시간(초).
+            route_key: 페이로드에서 라우팅에 쓸 필드명. 기본 ``action``.
+                ``None``이면 필드를 제거하지 않으며 ``@server.default`` 만 등록 가능.
+            lifecycle_topics: 연결/단절 이벤트용 구독 패턴(와일드카드). 브로커가 제공할 때만 설정.
+                기본 ``None`` 이면 구독하지 않는다.
             logger: 로거 인스턴스.
         """
+        if route_key is not None and route_key == "":
+            raise ValueError("route_key는 None 이거나 비어 있지 않은 문자열이어야 합니다")
         self._thing_type = thing_type
         self._service_name = service_name
         self._vin = vin
@@ -85,13 +94,14 @@ class MaasServer:
             logger=self._log,
         )
         self._session = SessionManager(idle_timeout=session_idle_timeout)
-        self._presence = PresenceMonitor()
+        self._presence = PresenceMonitor(lifecycle_topics=lifecycle_topics)
         self._dispatcher = Dispatcher(
             conn=self._conn,
             session=self._session,
             thing_type=thing_type,
             service_name=service_name,
             vin=vin,
+            route_key=route_key,
         )
 
         self._presence.on_disconnect(self._session.force_release)
@@ -114,7 +124,7 @@ class MaasServer:
         """
         환경변수에서 VIN과 엔드포인트를 읽어 서버를 생성한다.
 
-        Greengrass Component 배포 환경에서 편리하게 사용할 수 있다.
+        컨테이너·엣지 배포에서 환경변수로 설정을 주입할 때 편리하다.
         """
         vin = os.environ[vin_env]
         endpoint = os.environ[endpoint_env]
@@ -138,10 +148,11 @@ class MaasServer:
         """
         RPC 핸들러 등록 데코레이터.
 
-        ``action_name`` 은 클라이언트가 보내는 페이로드 ``"action"`` 값과 같아야 한다.
+        ``action_name`` 은 클라이언트가 보내는 페이로드의 ``route_key`` 필드 값과 같아야 한다
+        (기본 ``route_key`` 는 ``"action"``).
 
         Args:
-            action_name: 페이로드 action과 동일한 식별자.
+            action_name: 페이로드 라우팅 값과 동일한 식별자.
             streaming: True이면 generator/async generator 핸들러.
             exclusive: True이면 세션 Lock 보유 클라이언트만 호출 가능.
             acquire_lock: True이면 이 action 호출 시 세션 Lock 획득.
@@ -151,6 +162,34 @@ class MaasServer:
         def decorator(func: Callable) -> Callable:
             self._dispatcher.register(
                 action_name,
+                func,
+                streaming=streaming,
+                exclusive=exclusive,
+                acquire_lock=acquire_lock,
+                release_lock=release_lock,
+            )
+            return func
+
+        return decorator
+
+    def default(
+        self,
+        *,
+        streaming: bool = False,
+        exclusive: bool = False,
+        acquire_lock: bool = False,
+        release_lock: bool = False,
+    ) -> Callable:
+        """
+        단일 기본 RPC 핸들러 등록 데코레이터.
+
+        ``route_key`` 가 문자열일 때: 해당 필드가 없거나 빈 값이면 이 핸들러가 호출된다.
+        ``route_key=None`` 일 때: 모든 RPC 요청이 이 핸들러로만 전달되며,
+        페이로드에서 라우팅 필드를 제거하지 않는다. 이 경우 ``@server.action`` 은 사용할 수 없다.
+        """
+
+        def decorator(func: Callable) -> Callable:
+            self._dispatcher.register_default(
                 func,
                 streaming=streaming,
                 exclusive=exclusive,
@@ -239,7 +278,7 @@ class MaasServer:
         if not self._loop:
             return
 
-        if "$aws/events/presence" in msg.topic:
+        if self._presence.matches_lifecycle_topic(msg.topic):
             self._presence.handle_message(msg.topic, msg.payload)
             return
 

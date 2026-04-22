@@ -1,5 +1,5 @@
 """
-MQTT 5.0 over WSS 연결 관리.
+MQTT 5.0 연결 관리 (WSS+TLS 또는 로컬 TCP).
 
 paho-mqtt 2.x 기반. paho 내부 스레드에서 실행되는 콜백을
 asyncio 이벤트 루프로 안전하게 브리지한다.
@@ -75,7 +75,9 @@ class Mqtt5Connection:
     """
     MQTT 5.0 연결 클라이언트.
 
-    WSS 전송을 사용하며, JWT 토큰을 username으로 전달한다.
+    기본은 WSS+TLS(WebSocket Secure)이며, ``use_wss=False`` 이면 비암호화 TCP
+    (로컬 Mosquitto 등)에 연결할 수 있다.
+    JWT 토큰은 연결 시 username으로 전달한다.
     paho 콜백 스레드와 asyncio 루프를 call_soon_threadsafe로 연결한다.
     """
 
@@ -86,20 +88,23 @@ class Mqtt5Connection:
         token: Optional[str] = None,
         port: int = 443,
         *,
+        use_wss: bool = True,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """
         Args:
-            endpoint: AWS IoT Core 엔드포인트 (호스트명만, 포트 제외).
+            endpoint: 브로커 호스트명 (포트 제외).
             client_id: MQTT 클라이언트 ID.
-            token: JWT 인증 토큰. Custom Authorizer 사용 시 username으로 전달.
-            port: WSS 포트 (기본 443).
+            token: JWT 인증 토큰. 브로커 설정에 따라 username 등으로 전달.
+            port: 브로커 포트 (WSS 기본 443, TCP 예: 1883).
+            use_wss: True면 WebSocket+TLS, False면 일반 TCP(로컬 개발용).
             logger: 로거 인스턴스.
         """
         self._endpoint = endpoint
         self._client_id = client_id
         self._token = token
         self._port = port
+        self._use_wss = use_wss
         self._log = logger or logging.getLogger(__name__)
 
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -117,6 +122,14 @@ class Mqtt5Connection:
         """수신 메시지 콜백 등록."""
         self._message_callback = callback
 
+    def set_token(self, token: Optional[str]) -> None:
+        """
+        연결 직전 MQTT username으로 쓸 토큰을 설정한다.
+
+        ``connect()`` 호출 전에 갱신하면 매 연결마다 최신 JWT 등을 반영할 수 있다.
+        """
+        self._token = token
+
     async def connect(self) -> None:
         """MQTT 5.0 브로커에 연결."""
         self._loop = asyncio.get_running_loop()
@@ -124,14 +137,16 @@ class Mqtt5Connection:
         self._disconnect_event.clear()
         self._closed = False
 
+        transport = "websockets" if self._use_wss else "tcp"
         self._mqtt = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
             client_id=self._client_id,
             protocol=mqtt.MQTTv5,
-            transport="websockets",
+            transport=transport,
         )
-        self._mqtt.ws_set_options(path="/mqtt")
-        self._mqtt.tls_set()
+        if self._use_wss:
+            self._mqtt.ws_set_options(path="/mqtt")
+            self._mqtt.tls_set()
 
         if self._token:
             self._mqtt.username_pw_set(self._token, password="")

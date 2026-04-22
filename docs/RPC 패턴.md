@@ -3,60 +3,60 @@ sequenceDiagram
     autonumber
 
     actor Client as Client (Web App)
-    participant IOT as AWS IoT Core<br/>(MQTT Broker)
-    participant Edge as Edge Service<br/>(Greengrass)
+    participant Broker as MQTT 5.0 브로커
+    participant Edge as Edge RPC 서버
 
     rect rgb(240, 253, 244)
     Note over Client, Edge: [패턴 A] Liveness
-    Client->>IOT: Subscribe WMO/+/+/+/{clientId}/response
-    Edge->>IOT: Subscribe WMT/{ThingType}/{Service}/{VIN}/+/request
-    Client->>IOT: PUBLISH WMT/.../request (QoS 0, Expiry, CorrData, ResponseTopic=WMO/.../response)
-    IOT->>Edge: 라우팅
+    Client->>Broker: Subscribe WMO/+/+/+/{clientId}/response
+    Edge->>Broker: Subscribe WMT/{ThingType}/{Service}/{VIN}/+/request
+    Client->>Broker: PUBLISH WMT/.../request (QoS 0, Expiry, CorrData, ResponseTopic=WMO/.../response)
+    Broker->>Edge: 라우팅
     Edge->>Edge: 로컬 조회
-    Edge->>IOT: PUBLISH WMO/.../response (QoS 0, CorrData)
-    IOT->>Client: 응답
+    Edge->>Broker: PUBLISH WMO/.../response (QoS 0, CorrData)
+    Broker->>Client: 응답
     end
 
     rect rgb(254, 252, 232)
     Note over Client, Edge: [패턴 B·D] 신뢰성 제어·시한성
-    Client->>IOT: PUBLISH WMT/.../request (QoS 1, Expiry[패턴D], CorrData)
-    IOT->>Edge: 라우팅
-    Edge->>IOT: PUBLISH WMO/.../response (QoS 1, ReasonCode)
-    IOT->>Client: 응답
+    Client->>Broker: PUBLISH WMT/.../request (QoS 1, Expiry[패턴D], CorrData)
+    Broker->>Edge: 라우팅
+    Edge->>Broker: PUBLISH WMO/.../response (QoS 1, ReasonCode)
+    Broker->>Client: 응답
     end
 
     rect rgb(238, 242, 255)
     Note over Client, Edge: [패턴 C] 스트리밍
-    Client->>IOT: PUBLISH WMT/.../request
-    IOT->>Edge: 라우팅
+    Client->>Broker: PUBLISH WMT/.../request
+    Broker->>Edge: 라우팅
     loop 청크
-        Edge->>IOT: PUBLISH WMO/.../event (CorrData)
-        IOT->>Client: 청크
+        Edge->>Broker: PUBLISH WMO/.../event (CorrData)
+        Broker->>Client: 청크
     end
-    Edge->>IOT: PUBLISH WMO/.../response (is_EOF)
-    IOT->>Client: 완료
+    Edge->>Broker: PUBLISH WMO/.../response (is_EOF)
+    Broker->>Client: 완료
     end
 
     rect rgb(255, 245, 245)
     Note over Client, Edge: [패턴 E] 독점 세션
-    Client->>IOT: session_start 등 (QoS 1)
+    Client->>Broker: session_start 등 (QoS 1)
     Edge->>Edge: Lock(clientId)
-    IOT->>Edge: 타 클라이언트 요청
-    Edge--xIOT: 0x8A Server Busy
-    Client--xIOT: 단절
-    IOT->>Edge: $aws/events/presence/disconnected/{clientId}
+    Broker->>Edge: 타 클라이언트 요청
+    Edge--xBroker: 0x8A Server Busy
+    Client--xBroker: 단절
+    Broker->>Edge: (선택) 브로커 수명주기·presence 이벤트
     Edge->>Edge: Lock 해제
     end
 ```
 
 ## 1. 개요 및 공통 규약
 
-AWS Greengrass 기반 엣지가 제공하는 서비스를 웹 클라이언트가 **MQTT 5.0**으로 호출할 때의 패턴을 정의한다. 토픽·메타데이터 규격의 단일 출처는 [TOPIC_AND_ACL_SPEC.md](TOPIC_AND_ACL_SPEC.md) 및 [RPC_DESIGN.md](RPC_DESIGN.md)이다.
+엣지에서 동작하는 RPC 서비스를 클라이언트가 **MQTT 5.0**으로 호출할 때의 패턴을 정의한다. 토픽·메타데이터 규격의 단일 출처는 [TOPIC_AND_ACL_SPEC.md](TOPIC_AND_ACL_SPEC.md) 및 [RPC_DESIGN.md](RPC_DESIGN.md)이다.
 
 ### 1.1. 통신 기반
 
-- **엣지:** Greengrass Component 등 — `maas-server-sdk`로 `WMT/{ThingType}/{Service}/{VIN}/+/request` 구독.
-- **클라이언트:** MQTT over WSS — `maas-client-sdk`로 요청 발행 및 `WMO/+/+/+/{clientId}/response|event` 구독.
+- **엣지:** `maas-server-sdk`로 `WMT/{ThingType}/{Service}/{VIN}/+/request` 구독.
+- **클라이언트:** `maas-client-sdk`로 요청 발행 및 `WMO/+/+/+/{clientId}/response|event` 구독 (전송: TCP / TLS / WSS 등 브로커·배포에 따름).
 
 ### 1.2. MQTT 5 속성
 
@@ -67,7 +67,7 @@ AWS Greengrass 기반 엣지가 제공하는 서비스를 웹 클라이언트가
 
 ### 1.3. 컴포넌트 가용성
 
-Greengrass IPC 환경에서 LWT가 제한될 수 있으므로, Shadow 또는 Heartbeat로 가용성을 보조한다 (기존과 동일).
+일부 엣지·브로커 조합에서는 LWT(Last Will)가 제한될 수 있다. Heartbeat 토픽·브로커 제공 수명주기 이벤트(`MaasServer.lifecycle_topics`) 등으로 가용성을 보조할 수 있다.
 
 ### 1.4. Reason Code
 
@@ -91,7 +91,7 @@ Greengrass IPC 환경에서 LWT가 제한될 수 있으므로, Shadow 또는 Hea
 
 - 서버: 청크는 `WMO/.../event`, 완료는 `WMO/.../response` + `is_EOF`, 필요 시 Topic Alias.
 - 클라이언트: 동일 `Correlation Data`로 청크 수신, `is_EOF`로 종료.
-- 스트리밍 중 클라이언트 단절 시 `$aws/events/presence/disconnected/+` 등으로 전송 중단.
+- 스트리밍 중 클라이언트 단절 시 브로커·서버가 제공하는 단절 감지(수명주기 이벤트 등)로 전송을 중단할 수 있다.
 
 ### 패턴 D: 시한성 안전 제어 (Time-bound)
 
@@ -108,4 +108,4 @@ Greengrass IPC 환경에서 LWT가 제한될 수 있으므로, Shadow 또는 Hea
 
 ### 3.1. 웹 클라이언트 Keep-Alive
 
-WSS 환경에서 로드밸런서 Idle Timeout을 고려하여 MQTT **Keep-Alive 30~45초** 권장.
+WebSocket 등 프록시·로드밸런서 Idle Timeout을 고려하여 MQTT **Keep-Alive 30~45초** 권장.

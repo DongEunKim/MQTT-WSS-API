@@ -1,10 +1,14 @@
 """
 클라이언트 연결 상태 모니터 (Presence Monitor).
 
-AWS IoT Core의 수명주기 이벤트 토픽을 구독하여
-클라이언트 단절을 감지하고, 등록된 콜백을 호출한다.
+MQTT 브로커가 **연결/단절 이벤트**를 특정 토픽으로 알려주는 경우,
+해당 토픽을 구독해 단절을 감지하고 등록된 콜백을 호출한다.
+
+기본값은 구독 토픽이 비어 있다(로컬 개발용 브로커 등).
+운영 브로커가 수명주기 이벤트를 제공하면 ``MaasServer(..., lifecycle_topics=[...])`` 로 패턴을 넘긴다.
 
 주요 활용:
+
 - 독점 세션 Lock 강제 해제 (세션 점유 클라이언트 단절 시)
 - 스트리밍 중단 (수신 클라이언트 단절 시)
 """
@@ -13,27 +17,37 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Callable
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
-
-# AWS IoT Core 수명주기 이벤트 토픽
-_DISCONNECTED_TOPIC = "$aws/events/presence/disconnected/+"
-_CONNECTED_TOPIC = "$aws/events/presence/connected/+"
 
 DisconnectCallback = Callable[[str], None]
 ConnectCallback = Callable[[str], None]
 
 
+def _topic_matches(pattern: str, topic: str) -> bool:
+    """MQTT ``+`` / ``#`` 와일드카드 패턴 매칭."""
+    pattern_parts = pattern.split("/")
+    topic_parts = topic.split("/")
+    for i, pp in enumerate(pattern_parts):
+        if pp == "#":
+            return True
+        if i >= len(topic_parts):
+            return False
+        if pp != "+" and pp != topic_parts[i]:
+            return False
+    return len(pattern_parts) == len(topic_parts)
+
+
 class PresenceMonitor:
     """
-    AWS IoT 수명주기 이벤트 기반 클라이언트 Presence 모니터.
+    브로커 수명주기(연결/단절) 이벤트 기반 Presence 모니터.
 
-    서버 연결 객체에 추가 구독을 등록하고,
-    연결/단절 이벤트 발생 시 등록된 콜백을 호출한다.
+    ``lifecycle_topics`` 에 와일드카드 패턴을 넣으면 해당 토픽만 구독한다.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, lifecycle_topics: Optional[list[str]] = None) -> None:
+        self._lifecycle_topics: list[str] = list(lifecycle_topics or [])
         self._on_disconnect_callbacks: list[DisconnectCallback] = []
         self._on_connect_callbacks: list[ConnectCallback] = []
 
@@ -46,14 +60,21 @@ class PresenceMonitor:
         self._on_connect_callbacks.append(callback)
 
     def get_subscription_topics(self) -> list[str]:
-        """구독해야 할 수명주기 이벤트 토픽 목록."""
-        return [_DISCONNECTED_TOPIC, _CONNECTED_TOPIC]
+        """구독할 수명주기 이벤트 토픽 패턴 목록."""
+        return list(self._lifecycle_topics)
+
+    def matches_lifecycle_topic(self, topic: str) -> bool:
+        """수신 토픽이 등록된 수명주기 패턴 중 하나와 일치하는지 여부."""
+        for pat in self._lifecycle_topics:
+            if _topic_matches(pat, topic):
+                return True
+        return False
 
     def handle_message(self, topic: str, payload: bytes) -> None:
         """
         수명주기 이벤트 메시지 처리.
 
-        AWS IoT 이벤트 페이로드에서 clientId를 추출하여 콜백 호출.
+        페이로드는 JSON이고 ``clientId`` 필드를 포함한다고 가정한다(브로커 구현에 따름).
         """
         try:
             data = json.loads(payload.decode("utf-8"))

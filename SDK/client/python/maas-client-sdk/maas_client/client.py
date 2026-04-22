@@ -11,8 +11,9 @@ import asyncio
 import logging
 import queue
 import threading
-from typing import Any, Callable, Generator, Iterator, Optional
+from typing import Any, Iterator, Optional
 
+from .auth import TokenProvider
 from .client_async import MaasClientAsync
 from ._pubsub import MessageHandler
 from .models import RpcResponse, StreamEvent, Message
@@ -22,24 +23,32 @@ logger = logging.getLogger(__name__)
 
 class MaasClient:
     """
-    MQTT 5.0 over WSS 동기 클라이언트 (기본 인터페이스).
+    MQTT 5.0 동기 클라이언트 (기본 인터페이스).
 
+    기본은 WSS+TLS이며, ``use_wss=False`` 로 로컬 TCP 브로커(Mosquitto 등)에도 연결할 수 있다.
     내부적으로 asyncio 루프를 전용 스레드에서 운영한다.
     모든 메서드는 블로킹 방식으로 동작하므로 일반 Python 스크립트,
-    Flask, Greengrass Component 등 비동기 컨텍스트 없이 바로 사용할 수 있다.
+    Flask 등 비동기 컨텍스트 없이 바로 사용할 수 있다.
 
-    Example::
+    Example (생성자 바인딩 + 짧은 ``call``)::
 
         client = MaasClient(
-            endpoint="xxxx.iot.amazonaws.com",
+            endpoint="mqtt.example.com",
             client_id="my-client",
+            thing_type="CGU",
+            service="viss",
+            vin="VIN-001",
             token_provider=get_jwt,
         )
         client.connect()
+        result = client.call("get", {"path": "Vehicle.Speed"})
+        client.disconnect()
 
+    Example (호출마다 라우팅 지정)::
+
+        client = MaasClient(endpoint="...", client_id="...")
+        client.connect()
         result = client.call("CGU", "viss", "get", "VIN-001", {"path": "Vehicle.Speed"})
-        print(result.payload)
-
         client.disconnect()
     """
 
@@ -47,17 +56,26 @@ class MaasClient:
         self,
         endpoint: str,
         client_id: str,
-        token_provider: Optional[Callable[[], str]] = None,
-        port: int = 443,
+        token_provider: Optional[TokenProvider] = None,
+        port: Optional[int] = None,
         *,
+        use_wss: bool = True,
+        thing_type: Optional[str] = None,
+        service: Optional[str] = None,
+        vin: Optional[str] = None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """
         Args:
-            endpoint: AWS IoT Core 엔드포인트 호스트명.
+            endpoint: 브로커 호스트명.
             client_id: MQTT 클라이언트 ID.
-            token_provider: JWT 토큰을 반환하는 콜백. None이면 인증 없이 연결.
-            port: WSS 포트 (기본 443).
+            token_provider: 연결 시마다 호출되어 MQTT username 문자열을 반환.
+                None이면 인증 없이 연결.
+            port: 브로커 포트. None이면 ``use_wss`` 에 따라 443(WSS) 또는 1883(TCP).
+            use_wss: True면 WebSocket+TLS, False면 TCP(로컬 Mosquitto 등).
+            thing_type: 바인딩 시 토픽 ThingType. ``service``, ``vin`` 과 함께 세트로 지정.
+            service: 바인딩 시 서비스 이름.
+            vin: 바인딩 시 대상 VIN.
             logger: 로거 인스턴스.
         """
         self._log = logger or logging.getLogger(__name__)
@@ -74,6 +92,10 @@ class MaasClient:
             client_id=client_id,
             token_provider=token_provider,
             port=port,
+            use_wss=use_wss,
+            thing_type=thing_type,
+            service=service,
+            vin=vin,
             logger=self._log,
         )
 
@@ -105,12 +127,8 @@ class MaasClient:
 
     def call(
         self,
-        thing_type: str,
-        service: str,
-        action: str,
-        vin: str,
-        payload: Any = None,
-        *,
+        *args,
+        params: Any = None,
         qos: int = 1,
         timeout: float = 10.0,
         expiry: Optional[int] = None,
@@ -118,30 +136,22 @@ class MaasClient:
         """
         단일 RPC 호출 (블로킹).
 
-        Args:
-            thing_type: 사물 타입 (예: CGU).
-            service: 서비스 이름 (예: viss).
-            action: 실행할 액션. 페이로드에 자동 삽입.
-            vin: 대상 장비 VIN.
-            payload: 추가 페이로드 (dict 권장).
-            qos: MQTT QoS (0 또는 1).
-            timeout: 응답 대기 타임아웃(초).
-            expiry: Message Expiry Interval(초). 패턴 D(시한성 명령)에 사용.
+        ``MaasClientAsync.call`` 와 동일한 인자 규칙:
+        바인딩 시 ``call(action[, params])``, 명시 시
+        ``call(thing_type, service, action, vin[, params])``.
 
         Returns:
             RpcResponse.
 
         Raises:
+            TypeError, ValueError: 인자 조합 오류.
             RpcTimeoutError: 타임아웃 초과.
             RpcServerError: 서버 오류 응답.
         """
         return self._run(
             self._async.call(
-                thing_type=thing_type,
-                service=service,
-                action=action,
-                vin=vin,
-                payload=payload,
+                *args,
+                params=params,
                 qos=qos,
                 timeout=timeout,
                 expiry=expiry,
@@ -151,20 +161,15 @@ class MaasClient:
 
     def stream(
         self,
-        thing_type: str,
-        service: str,
-        action: str,
-        vin: str,
-        payload: Any = None,
-        *,
+        *args,
+        params: Any = None,
         qos: int = 1,
         chunk_timeout: float = 60.0,
     ) -> Iterator[StreamEvent]:
         """
         스트리밍 RPC 호출 (동기 이터레이터).
 
-        for chunk in client.stream("CGU", "diagnostics", "can_log", "VIN-001"):
-            process(chunk)
+        인자 규칙은 ``call`` 과 동일.
 
         Args:
             chunk_timeout: 청크 간 최대 대기 시간(초).
@@ -181,11 +186,8 @@ class MaasClient:
         async def _collect() -> None:
             try:
                 async for event in self._async.stream(
-                    thing_type=thing_type,
-                    service=service,
-                    action=action,
-                    vin=vin,
-                    payload=payload,
+                    *args,
+                    params=params,
                     qos=qos,
                 ):
                     sync_queue.put(event)
@@ -207,10 +209,7 @@ class MaasClient:
 
     def exclusive_session(
         self,
-        thing_type: str,
-        service: str,
-        vin: str,
-        *,
+        *thing_svc_vin: str,
         acquire_action: str = "session_start",
         release_action: str = "session_stop",
         timeout: float = 15.0,
@@ -218,9 +217,26 @@ class MaasClient:
         """
         독점 세션 컨텍스트 매니저 (패턴 E).
 
-        with client.exclusive_session("CGU", "uds", "VIN-001") as session:
-            session.call("ecu_reset", payload={})
+        인자 없음: 생성자 바인딩 사용.
+
+        인자 세 개: (thing_type, service, vin) 명시.
+
+        with client.exclusive_session() as session:
+            session.call("ecu_reset", params={})
         """
+        if len(thing_svc_vin) == 0:
+            thing_type, service, vin = self._async._bound_routing()
+        elif len(thing_svc_vin) == 3:
+            thing_type, service, vin = (
+                thing_svc_vin[0],
+                thing_svc_vin[1],
+                thing_svc_vin[2],
+            )
+        else:
+            raise TypeError(
+                "exclusive_session() 인자는 0개(생성자 바인딩) 또는 "
+                "(thing_type, service, vin) 3개여야 합니다."
+            )
         return SyncExclusiveSessionContext(
             client=self,
             thing_type=thing_type,
@@ -312,7 +328,7 @@ class SyncExclusiveSessionContext:
     def call(
         self,
         action: str,
-        payload: Any = None,
+        params: Any = None,
         *,
         qos: int = 1,
         timeout: Optional[float] = None,
@@ -323,7 +339,7 @@ class SyncExclusiveSessionContext:
             self._service,
             action,
             self._vin,
-            payload=payload,
+            params=params,
             qos=qos,
             timeout=timeout or self._timeout,
         )
