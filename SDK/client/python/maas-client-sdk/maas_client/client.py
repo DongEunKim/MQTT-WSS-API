@@ -140,6 +140,9 @@ class MaasClient:
         바인딩 시 ``call(action[, params])``, 명시 시
         ``call(thing_type, service, action, vin[, params])``.
 
+        ``timeout``·``expiry``·QoS 1에서의 Message Expiry 연동은
+        ``MaasClientAsync.call`` 과 동일하다.
+
         Returns:
             RpcResponse.
 

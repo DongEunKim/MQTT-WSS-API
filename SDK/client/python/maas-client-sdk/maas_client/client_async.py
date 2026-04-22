@@ -205,8 +205,11 @@ class MaasClientAsync:
             args: 위 패턴 중 하나.
             params: RPC 인자. 네 축만 위치로 줄 때는 keyword로 전달. 위치 params와 동시 사용 불가.
             qos: MQTT QoS (0 또는 1).
-            timeout: 응답 대기 타임아웃(초).
-            expiry: Message Expiry Interval(초). 패턴 D(시한성 명령)에 사용.
+            timeout: 응답 대기 타임아웃(초). QoS 1이면 PUBLISH의 Message Expiry
+                Interval도 이 값과 맞춘다(초 올림, 최소 1).
+            expiry: Message Expiry Interval(초). **QoS 0일 때만** PUBLISH에 넣는다.
+                QoS 1에서는 무시되며 Expiry는 ``timeout``에서 유도된다. QoS 0은
+                보통 비큐잉이라 Expiry 실효는 제한적이며, 시한성 제어는 QoS 1 권장.
 
         Returns:
             RpcResponse (응답 본문은 ``payload`` 필드, MQTT 페이로드와 용어 구분).

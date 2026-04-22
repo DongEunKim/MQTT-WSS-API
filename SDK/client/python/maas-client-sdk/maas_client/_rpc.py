@@ -50,6 +50,43 @@ def _raise_for_reason_code(rc: int, detail: str, service: str, action: str) -> N
     raise RpcServerError(rc, detail)
 
 
+def _ceil_positive_seconds(seconds: float) -> int:
+    """
+    양의 타임아웃(초)을 정수 초로 올림한다.
+
+    ``timeout``이 정수 초와 같으면 그대로 두고, 소수 초면 한 칸 올린다.
+    """
+    t = float(seconds)
+    i = int(t)
+    return i if t <= i else i + 1
+
+
+def _publish_message_expiry_for_call(
+    qos: int,
+    timeout: float,
+    expiry: Optional[int],
+) -> Optional[int]:
+    """
+    단일 RPC PUBLISH에 넣을 Message Expiry Interval(초)을 결정한다.
+
+    QoS 1에서는 브로커가 오래된 요청을 무기한 전달하지 않도록, 클라이언트의
+    ``timeout``(응답 대기 상한)과 동일한 값을 Expiry로 둔다(초 단위 올림, 최소 1).
+    QoS 0에서는 ``expiry`` 인자만 선택 반영한다. QoS 0은 보통 비큐잉이라
+    Expiry의 실효는 배포·브로커에 따라 제한적일 수 있다.
+
+    Args:
+        qos: MQTT QoS (0 또는 1).
+        timeout: ``call``의 응답 대기 타임아웃(초).
+        expiry: 호출자가 지정한 Expiry. QoS 0에서만 PUBLISH에 넣는다.
+
+    Returns:
+        ``build_publish_properties``에 넘길 정수 초, 또는 생략 시 ``None``.
+    """
+    if qos == 1:
+        return max(1, _ceil_positive_seconds(timeout))
+    return expiry
+
+
 def _build_request_payload(action: str, params: Any) -> bytes:
     """
     action과 RPC params를 MQTT PUBLISH 본문(JSON bytes)으로 직렬화.
@@ -188,8 +225,11 @@ class RpcManager:
             vin: 토픽의 {VIN}.
             params: RPC 인자 (dict 권장). action 키는 SDK가 덮어쓴다.
             qos: MQTT QoS (0 또는 1).
-            timeout: 응답 대기 타임아웃(초).
-            expiry: Message Expiry Interval(초). 패턴 D용.
+            timeout: 응답 대기 타임아웃(초). QoS 1이면 Message Expiry도 이 값과
+                맞춘다(초 단위 올림, 최소 1초).
+            expiry: Message Expiry Interval(초). **QoS 0일 때만** PUBLISH에 넣는다.
+                QoS 1에서는 무시되고 ``timeout``에서 유도된다. QoS 0은 보통 비큐잉이라
+                실효는 제한적이다.
 
         Raises:
             RpcTimeoutError: 타임아웃 초과.
@@ -203,10 +243,11 @@ class RpcManager:
         async with self._lock:
             self._pending[corr_id] = future
 
+        eff_expiry = _publish_message_expiry_for_call(qos, timeout, expiry)
         props = build_publish_properties(
             response_topic=response_topic,
             correlation_data=corr_id,
-            message_expiry=expiry,
+            message_expiry=eff_expiry,
         )
         raw = _build_request_payload(action, params)
 

@@ -109,7 +109,7 @@ server.run()
 ### 2.4 API 요구사항
 
 - **`call(thing_type, service, action, vin, params=..., qos=..., timeout=..., expiry=...)`**  
-  단일 응답 RPC. `expiry`는 패턴 D(Message Expiry Interval)에 사용.
+  단일 응답 RPC. QoS 1이면 Expiry는 `timeout`과 자동 정렬. `expiry`는 QoS 0 PUBLISH에만 선택 적용(일반적으로 비큐잉이라 실효 제한적); 패턴 D는 QoS 1+`timeout` 권장.
 - **`stream(thing_type, service, action, vin, ...)`**  
   `async for`로 `event` 토픽 청크 수신 후 `response`로 완료.
 - **`exclusive_session(thing_type, service, vin, acquire_action=..., release_action=...)`**  

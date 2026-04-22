@@ -80,7 +80,7 @@ sequenceDiagram
 ### 패턴 A: 상태 및 정보 조회 (Liveness/Health Check)
 
 - 서버: 응답을 **QoS 0**, `Correlation Data` 유지.
-- 클라이언트: **QoS 0**, Message Expiry·앱 타임아웃 약 3초 권장.
+- 클라이언트: **QoS 0**, 앱 타임아웃 약 3초 권장. QoS 0은 보통 비큐잉이라 Message Expiry는 생략·실효 제한적.
 
 ### 패턴 B: 신뢰성 보장 단일 제어 (Reliable Control)
 
@@ -95,7 +95,7 @@ sequenceDiagram
 
 ### 패턴 D: 시한성 안전 제어 (Time-bound)
 
-- 클라이언트: **Message Expiry Interval** 엄격 설정, **Clean Start**로 stale 응답 방지.
+- 클라이언트: **QoS 1**로 요청(브로커 큐·지연 전달 시 만료 의미 있음). SDK는 `timeout`과 **Message Expiry**를 맞춤. **Clean Start** 등으로 stale 응답 방지. QoS 0만으로는 브로커 Expiry 실효가 거의 없음.
 
 ### 패턴 E: 독점 세션 (Exclusive Session / Remote UDS)
 

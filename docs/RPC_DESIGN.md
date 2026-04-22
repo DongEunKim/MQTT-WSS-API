@@ -39,7 +39,7 @@
 | 항목 | 값 |
 |------|----|
 | QoS | 0 |
-| Message Expiry | 3초 권장 |
+| Message Expiry | 생략 권장. QoS 0은 수신 세션이 없으면 브로커가 메시지를 보관하지 않는 것이 일반적이라 Expiry 효과는 거의 없다. |
 | 클라이언트 Timeout | 3초 |
 | 서비스 응답 | reason_code=0, 즉시 반환 |
 
@@ -97,16 +97,22 @@ def handle_log(ctx: RpcContext):
 ### 패턴 D: 시한성 안전 제어 (Time-bound)
 
 즉시 실행되지 않으면 위험한 명령.  
-`Message Expiry Interval`로 브로커 레벨에서 지연 메시지 자동 폐기.
+**브로커가 요청을 잠깐이라도 큐에 둘 수 있는 QoS 1**에서 `Message Expiry Interval`로 “너무 늦게 전달되는 요청”을 폐기하는 것이 실질적이다.
+
+**QoS 0과의 구분:** QoS 0은 *최대 한 번* 전달로, **당시 구독(수신) 세션이 없으면 메시지가 곧바로 버려지는 것이 일반적**이다. 그래서 QoS 0에 `Message Expiry`를 붙여도, 브로커가 애초에 메시지를 오래 들고 있지 않다면 **Expiry가 할 일이 거의 없다.**
+
+**권장 (Python SDK):** 시한성 제어는 **QoS 1 + 적절한 `timeout`**으로 한다. `maas-client-sdk`의 `call`은 QoS 1일 때 `Message Expiry Interval`을 **항상 `timeout`(응답 대기 상한)과 동일**하게 둔다(초 단위 올림, 최소 1초). 별도 `expiry` 인자는 적용되지 않는다. 클라이언트가 응답을 포기하는 시각과 브로커가 “오래된 요청”을 버리는 시각을 맞추기 위함이다.
 
 ```python
 client.call(
     "CGU", "safety", "stop_engine", "VIN-001",
     params={"force": True},
-    qos=1, timeout=5.0,
-    expiry=2,  # 2초 후 브로커에서 자동 폐기
+    qos=1,
+    timeout=5.0,  # 브로커 Expiry도 5초(올림)로 자동 설정
 )
 ```
+
+**SDK의 `expiry` 인자:** QoS 0 호출 시에만 PUBLISH에 선택적으로 넣을 수 있다. 위와 같은 이유로 **대부분의 배포에서는 의미가 제한적**이며, 특수 브로커·정책을 알고 있을 때만 쓰면 된다.
 
 ---
 

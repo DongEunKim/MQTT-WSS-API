@@ -206,6 +206,10 @@ client = MaasClient(
 
 `qos`, `timeout`, `expiry` 등은 항상 **키워드 인자**로 넘긴다.
 
+**QoS 1과 Message Expiry:** 기본 RPC는 QoS 1이다. 이 경우 SDK는 MQTT 5 `Message Expiry Interval`을 **응답 대기 `timeout`(초)과 같게** 자동 설정한다(소수 초는 올림, 최소 1초). 브로커가 오래된 요청을 무기한 전달하지 않도록, 클라이언트 타임아웃과 맞춘다. 이때 `expiry=` 인자는 **무시**된다.
+
+**QoS 0과 `expiry`:** QoS 0은 수신 세션이 없으면 메시지가 바로 사라지는 것이 일반적이라, 브로커 `Message Expiry`의 실효는 **대부분 제한적**이다. SDK는 호환을 위해 `qos=0`일 때만 `expiry=`를 PUBLISH에 넣을 수 있다(미지정이면 속성 생략). 시한성 제어·패턴 D는 **`qos=1` + `timeout`(자동 Expiry)** 를 권장한다(`docs/RPC_DESIGN.md` 패턴 D).
+
 **바인딩 예:**
 
 ```python
@@ -214,7 +218,7 @@ r = client.call(
     {"path": "Vehicle.Speed"},
     qos=1,
     timeout=10.0,
-    expiry=None,  # 선택: Message Expiry Interval(초), 패턴 D
+    # QoS 1: Message Expiry ≈ 10초(자동). expiry 인자 불필요·무시.
 )
 print(r.payload, r.reason_code)
 ```

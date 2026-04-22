@@ -115,7 +115,7 @@ RPC 통신에서 MQTT 5.0 Properties를 다음과 같이 활용한다.
 |----------|-----------|------|
 | `Response Topic` | 요청 PUBLISH | 서비스가 응답할 WMO 토픽. SDK가 자동 삽입 |
 | `Correlation Data` | 요청/응답 PUBLISH | 요청-응답 매핑용 UUID bytes. SDK가 자동 처리 |
-| `Message Expiry Interval` | 요청 PUBLISH | 패턴 D(시한성 명령)에서 브로커 레벨 메시지 만료 |
+| `Message Expiry Interval` | 요청 PUBLISH | QoS 1 RPC에서 브로커가 오래된 요청을 폐기(패턴 D). SDK는 `timeout`과 동기화. QoS 0은 보통 비큐잉이라 실효 제한적 |
 | `User Property: reason_code` | 응답 PUBLISH | 처리 결과 코드 (0=성공, 0x80 이상=오류) |
 | `User Property: error_detail` | 응답 PUBLISH | 오류 상세 메시지 (오류 시만 포함) |
 | `User Property: is_EOF` | 응답 PUBLISH | `"true"` — 스트리밍 완료 신호 |
